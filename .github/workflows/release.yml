@@ -7,35 +7,39 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
+
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-    - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-    - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release
+      - name: Configure CMake
+        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=Release
 
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config Release
+      - name: Build
+        run: cmake --build ${{ github.workspace }}/build --config Release
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v5
-      with:
-        name: MicGainControl
-        path: build/Release/MicGainControl.exe
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: MicGainControl
+          path: build/Release/MicGainControl.exe
 
-    - name: Create Release
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: build/Release/MicGainControl.exe
-        tag_name: latest
-        name: Latest Release
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Release/MicGainControl.exe
+          tag_name: latest
+          name: Latest Release
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
