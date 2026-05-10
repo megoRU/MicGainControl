@@ -22,14 +22,20 @@ jobs:
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config Release
 
-    - name: Package
-      run: |
-        mkdir release
-        copy build\Release\MicLock.exe release\
-        powershell Compress-Archive -Path release\* -DestinationPath MicLock-x64.zip
-
     - name: Upload Artifact
       uses: actions/upload-artifact@v5
       with:
-        name: MicLock-x64
-        path: MicLock-x64.zip
+        name: MicGainControl
+        path: build/Release/MicGainControl.exe
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: build/Release/MicGainControl.exe
+        tag_name: latest
+        name: Latest Release
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

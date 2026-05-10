@@ -34,10 +34,7 @@ public:
         });
 
         m_trayManager.SetOnOpenConfig([this]() {
-            wchar_t exePath[MAX_PATH];
-            GetModuleFileNameW(NULL, exePath, MAX_PATH);
-            std::wstring configPath = fs::path(exePath).parent_path() / L"config.json";
-            ShellExecuteW(NULL, L"open", L"notepad.exe", configPath.c_str(), NULL, SW_SHOW);
+            ShellExecuteW(NULL, L"open", L"notepad.exe", m_configManager.GetConfigPath().c_str(), NULL, SW_SHOW);
         });
 
         m_trayManager.SetOnExit([this]() {
@@ -60,10 +57,10 @@ private:
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = WindowProc;
         wc.hInstance = GetModuleHandle(NULL);
-        wc.lpszClassName = L"MicLockHiddenWindow";
+        wc.lpszClassName = L"MicGainControlHiddenWindow";
         RegisterClassExW(&wc);
 
-        m_hWnd = CreateWindowExW(0, wc.lpszClassName, L"MicLock", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, wc.hInstance, this);
+        m_hWnd = CreateWindowExW(0, wc.lpszClassName, L"MicGainControl", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, wc.hInstance, this);
         if (!m_hWnd) return false;
 
         return m_trayManager.CreateTrayIcon(m_hWnd);
@@ -104,13 +101,13 @@ void RegisterAutostart() {
 
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, L"MicLock", 0, REG_SZ, (BYTE*)quotedPath.c_str(), (DWORD)(quotedPath.length() + 1) * sizeof(wchar_t));
+        RegSetValueExW(hKey, L"MicGainControl", 0, REG_SZ, (BYTE*)quotedPath.c_str(), (DWORD)(quotedPath.length() + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance, [[maybe_unused]] LPSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
-    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicLock_SingleInstance_Mutex");
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicGainControl_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         return 0;
     }
