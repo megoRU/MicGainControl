@@ -25,7 +25,7 @@ bool AudioManager::Initialize() {
 }
 
 bool AudioManager::SetupDefaultDevice() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     CleanupDevice();
 
     HRESULT hr = m_enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &m_device);
@@ -54,13 +54,13 @@ void AudioManager::CleanupDevice() {
 }
 
 void AudioManager::SetTargetVolume(float volume) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_targetVolume = volume;
     EnforceVolume();
 }
 
 void AudioManager::SetEnabled(bool enabled) {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_enabled = enabled;
     if (m_enabled) {
         EnforceVolume();
@@ -68,7 +68,7 @@ void AudioManager::SetEnabled(bool enabled) {
 }
 
 void AudioManager::EnforceVolume() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!m_enabled || !m_volumeControl) return;
 
     float currentVolume = 0.0f;

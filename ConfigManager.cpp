@@ -1,9 +1,64 @@
 #include "ConfigManager.hpp"
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <filesystem>
 
 namespace fs = std::filesystem;
+
+namespace {
+int ParseMicrophoneVolumePercent(const std::string& jsonText) {
+    std::size_t keyPosition = jsonText.find("\"microphoneVolume\"");
+    if (keyPosition == std::string::npos) {
+        return 100;
+    }
+
+    std::size_t colonPosition = jsonText.find(':', keyPosition);
+    if (colonPosition == std::string::npos) {
+        return 100;
+    }
+
+    std::size_t numberStart = jsonText.find_first_of("-0123456789", colonPosition + 1);
+    if (numberStart == std::string::npos) {
+        return 100;
+    }
+
+    std::size_t numberEnd = jsonText.find_first_not_of("0123456789", numberStart + 1);
+    std::string numberToken = jsonText.substr(numberStart, numberEnd - numberStart);
+
+    try {
+        return std::stoi(numberToken);
+    } catch (...) {
+        return 100;
+    }
+}
+
+bool ParseEnabled(const std::string& jsonText) {
+    std::size_t keyPosition = jsonText.find("\"enabled\"");
+    if (keyPosition == std::string::npos) {
+        return true;
+    }
+
+    std::size_t colonPosition = jsonText.find(':', keyPosition);
+    if (colonPosition == std::string::npos) {
+        return true;
+    }
+
+    std::size_t valueStart = jsonText.find_first_not_of(" \t\r\n", colonPosition + 1);
+    if (valueStart == std::string::npos) {
+        return true;
+    }
+
+    if (jsonText.compare(valueStart, 4, "true") == 0) {
+        return true;
+    }
+
+    if (jsonText.compare(valueStart, 5, "false") == 0) {
+        return false;
+    }
+
+    return true;
+}
+}
 
 ConfigManager::ConfigManager() {
     wchar_t exePath[MAX_PATH];
@@ -24,11 +79,19 @@ bool ConfigManager::Load() {
     }
 
     try {
-        std::ifstream f(m_configPath);
-        nlohmann::json data = nlohmann::json::parse(f);
+        std::ifstream fileStream(m_configPath);
+        std::string jsonText((std::istreambuf_iterator<char>(fileStream)), std::istreambuf_iterator<char>());
 
-        m_config.microphoneVolume = data.value("microphoneVolume", 100) / 100.0f;
-        m_config.enabled = data.value("enabled", true);
+        int microphoneVolumePercent = ParseMicrophoneVolumePercent(jsonText);
+        if (microphoneVolumePercent < 0) {
+            microphoneVolumePercent = 0;
+        }
+        if (microphoneVolumePercent > 100) {
+            microphoneVolumePercent = 100;
+        }
+
+        m_config.microphoneVolume = static_cast<float>(microphoneVolumePercent) / 100.0f;
+        m_config.enabled = ParseEnabled(jsonText);
         return true;
     } catch (...) {
         return false;
@@ -37,13 +100,21 @@ bool ConfigManager::Load() {
 
 void ConfigManager::Save() {
     try {
-        nlohmann::json data;
-        data["microphoneVolume"] = static_cast<int>(m_config.microphoneVolume * 100);
-        data["enabled"] = m_config.enabled;
+        int microphoneVolumePercent = static_cast<int>(m_config.microphoneVolume * 100.0f);
+        if (microphoneVolumePercent < 0) {
+            microphoneVolumePercent = 0;
+        }
+        if (microphoneVolumePercent > 100) {
+            microphoneVolumePercent = 100;
+        }
 
-        std::ofstream f(m_configPath);
-        f << data.dump(2);
-    } catch (...) {}
+        std::ofstream fileStream(m_configPath);
+        fileStream << "{\n";
+        fileStream << "  \"microphoneVolume\": " << microphoneVolumePercent << ",\n";
+        fileStream << "  \"enabled\": " << (m_config.enabled ? "true" : "false") << "\n";
+        fileStream << "}\n";
+    } catch (...) {
+    }
 }
 
 const Config& ConfigManager::GetConfig() const {
