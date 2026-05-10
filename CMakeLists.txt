@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(MicLock CXX)
+project(MicGainControl CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +16,7 @@ endif()
 # Resources
 set(RESOURCE_FILES resources.rc)
 
-add_executable(MicLock
+add_executable(MicGainControl
     WIN32
     main.cpp
     ConfigManager.cpp
@@ -29,4 +29,4 @@ add_executable(MicLock
     ${RESOURCE_FILES}
 )
 
-target_link_libraries(MicLock PRIVATE Ole32 Shell32 User32 Advapi32 Mmdevapi)
+target_link_libraries(MicGainControl PRIVATE Ole32 Shell32 User32 Advapi32 Mmdevapi Comctl32)

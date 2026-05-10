@@ -19,6 +19,7 @@ public:
     bool Load();
     void Save();
     const Config& GetConfig() const;
+    const std::wstring& GetConfigPath() const { return m_configPath; }
     void SetEnabled(bool enabled);
 
     using ConfigChangedCallback = std::function<void(const Config&)>;

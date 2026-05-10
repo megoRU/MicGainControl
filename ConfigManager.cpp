@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <shlobj.h>
 
 namespace fs = std::filesystem;
 
@@ -61,9 +62,16 @@ bool ParseEnabled(const std::string& jsonText) {
 }
 
 ConfigManager::ConfigManager() {
-    wchar_t exePath[MAX_PATH];
-    GetModuleFileNameW(NULL, exePath, MAX_PATH);
-    m_configPath = fs::path(exePath).parent_path() / L"config.json";
+    PWSTR path = NULL;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile, 0, NULL, &path))) {
+        m_configPath = std::wstring(path) + L"\\.MicGainControl.json";
+        CoTaskMemFree(path);
+    } else {
+        // Fallback to local directory if for some reason SHGetKnownFolderPath fails
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileNameW(NULL, exePath, MAX_PATH);
+        m_configPath = fs::path(exePath).parent_path() / L".MicGainControl.json";
+    }
     m_stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
