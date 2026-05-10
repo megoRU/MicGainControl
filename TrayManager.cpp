@@ -17,7 +17,14 @@ bool TrayManager::CreateTrayIcon(HWND hWnd) {
     m_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     m_nid.uCallbackMessage = WM_TRAY_ICON;
 
-    m_nid.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    m_nid.hIcon = (HICON)LoadImageW(
+         m_hInstance,
+         MAKEINTRESOURCEW(IDI_APP_ICON),
+         IMAGE_ICON,
+         GetSystemMetrics(SM_CXSMICON),
+         GetSystemMetrics(SM_CYSMICON),
+         LR_DEFAULTCOLOR
+    );
 
     if (!m_nid.hIcon) {
         return false;
