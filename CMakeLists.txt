@@ -5,15 +5,16 @@ project(MicGainControl CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use dynamic MSVC runtime (/MD, /MDd)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
 # Unicode build
 add_definitions(-DUNICODE -D_UNICODE)
 
-# Release optimizations
 if(MSVC)
     add_compile_options(/W4 /WX)
 endif()
 
-# Resources
 set(RESOURCE_FILES resources.rc)
 
 add_executable(MicGainControl
