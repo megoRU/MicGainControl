@@ -67,6 +67,7 @@ void AudioManager::SetEnabled(bool enabled) {
 }
 
 void AudioManager::EnforceVolume() {
+    std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_enabled || !m_volumeControl) return;
 
     float currentVolume = 0.0f;
@@ -98,11 +99,11 @@ STDMETHODIMP AudioManager::QueryInterface(REFIID riid, void** ppv) {
 }
 
 STDMETHODIMP_(ULONG) AudioManager::AddRef() {
-    return InterlockedIncrement(&m_refCount);
+    return ++m_refCount;
 }
 
 STDMETHODIMP_(ULONG) AudioManager::Release() {
-    long count = InterlockedDecrement(&m_refCount);
+    long count = --m_refCount;
     // Since we are using this as a member in main, we don't delete this
     return count;
 }

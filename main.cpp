@@ -107,7 +107,7 @@ void RegisterAutostart() {
     }
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance, [[maybe_unused]] LPSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicLock_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         return 0;
