@@ -26,6 +26,7 @@ add_executable(MicGainControl
     TrayManager.cpp
     TrayManager.hpp
     resource.h
+    app.manifest
     ${RESOURCE_FILES}
 )
 
