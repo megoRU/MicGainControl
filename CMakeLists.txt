@@ -36,5 +36,4 @@ target_link_libraries(MicGainControl PRIVATE
     User32
     Advapi32
     Mmdevapi
-    Comctl32
 )
