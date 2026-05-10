@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <shellapi.h>
+#include <ShellScalingApi.h>
 #include "ConfigManager.hpp"
 #include "AudioManager.hpp"
 #include "TrayManager.hpp"
@@ -107,6 +108,8 @@ void RegisterAutostart() {
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance, [[maybe_unused]] LPSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicGainControl_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         return 0;
