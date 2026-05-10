@@ -5,6 +5,9 @@ TrayManager::TrayManager(HINSTANCE hInstance) : m_hInstance(hInstance) {}
 
 TrayManager::~TrayManager() {
     Shell_NotifyIconW(NIM_DELETE, &m_nid);
+    if (m_nid.hIcon) {
+        DestroyIcon(m_nid.hIcon);
+    }
 }
 
 bool TrayManager::CreateTrayIcon(HWND hWnd) {
@@ -13,8 +16,14 @@ bool TrayManager::CreateTrayIcon(HWND hWnd) {
     m_nid.uID = 1;
     m_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     m_nid.uCallbackMessage = WM_TRAY_ICON;
+
     m_nid.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-    wcscpy_s(m_nid.szTip, L"MicLock - Microphone Volume Enforcer");
+
+    if (!m_nid.hIcon) {
+        return false;
+    }
+
+    wcscpy_s(m_nid.szTip, L"MicGainControl - Microphone Volume Enforcer");
 
     return Shell_NotifyIconW(NIM_ADD, &m_nid) == TRUE;
 }
