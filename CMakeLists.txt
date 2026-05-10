@@ -10,7 +10,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 
 # Release optimizations
 if(MSVC)
-    add_compile_options(/W4 /WX /MT)
+    add_compile_options(/W4 /WX)
 endif()
 
 # Resources
