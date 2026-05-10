@@ -17,9 +17,10 @@ bool TrayManager::CreateTrayIcon(HWND hWnd) {
     m_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     m_nid.uCallbackMessage = WM_TRAY_ICON;
 
-    HRESULT hr = LoadIconMetric(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), LIM_SMALL, &m_nid.hIcon);
-    if (FAILED(hr)) {
-        m_nid.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+    m_nid.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
+
+    if (!m_nid.hIcon) {
+        return false;
     }
 
     wcscpy_s(m_nid.szTip, L"MicGainControl - Microphone Volume Enforcer");
