@@ -5,7 +5,6 @@
 #include <atomic>
 #include <thread>
 #include <windows.h>
-#include <nlohmann/json.hpp>
 
 struct Config {
     float microphoneVolume = 1.0f; // 0.0 to 1.0

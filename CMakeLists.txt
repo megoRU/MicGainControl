@@ -13,14 +13,6 @@ if(MSVC)
     add_link_options(/SUBSYSTEM:WINDOWS /ENTRY:WinMainCRTStartup)
 endif()
 
-# Fetch nlohmann/json
-include(FetchContent)
-FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
-)
-FetchContent_MakeAvailable(json)
-
 # Resources
 set(RESOURCE_FILES resources.rc)
 
@@ -37,4 +29,4 @@ add_executable(MicLock
     ${RESOURCE_FILES}
 )
 
-target_link_libraries(MicLock PRIVATE nlohmann_json::nlohmann_json Ole32 Shell32 User32 Advapi32 Mmdevapi)
+target_link_libraries(MicLock PRIVATE Ole32 Shell32 User32 Advapi32 Mmdevapi)
