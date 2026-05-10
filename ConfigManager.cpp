@@ -92,7 +92,7 @@ void ConfigManager::WatchThread() {
     OVERLAPPED overlapped = {0};
     overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-    uint8_t buffer[1024];
+    alignas(DWORD) uint8_t buffer[1024];
 
     while (m_running) {
         DWORD bytesReturned;

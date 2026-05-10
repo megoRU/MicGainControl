@@ -1,5 +1,6 @@
 #include "AudioManager.hpp"
 #include <iostream>
+#include <cmath>
 
 // {A316E243-764D-4700-9423-93E1030F5522}
 const GUID AudioManager::m_contextGuid = { 0xa316e243, 0x764d, 0x4700, { 0x94, 0x23, 0x93, 0xe1, 0x3, 0xf, 0x55, 0x22 } };
@@ -74,7 +75,7 @@ void AudioManager::EnforceVolume() {
     m_volumeControl->GetMasterVolumeLevelScalar(&currentVolume);
 
     // Use a small epsilon for float comparison
-    if (abs(currentVolume - m_targetVolume) > 0.001f) {
+    if (std::abs(currentVolume - m_targetVolume) > 0.001f) {
         m_volumeControl->SetMasterVolumeLevelScalar(m_targetVolume, &m_contextGuid);
     }
 
@@ -115,7 +116,7 @@ STDMETHODIMP AudioManager::OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA pNotify) {
     return S_OK;
 }
 
-STDMETHODIMP AudioManager::OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR pwstrDefaultDeviceId) {
+STDMETHODIMP AudioManager::OnDefaultDeviceChanged(EDataFlow flow, ERole role, [[maybe_unused]] LPCWSTR pwstrDefaultDeviceId) {
     if (flow == eCapture && role == eConsole) {
         SetupDefaultDevice();
     }

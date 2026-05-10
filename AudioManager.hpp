@@ -45,7 +45,7 @@ private:
 
     float m_targetVolume = 1.0f;
     bool m_enabled = true;
-    std::mutex m_mutex;
+    std::recursive_mutex m_mutex;
 
     static const GUID m_contextGuid;
 };

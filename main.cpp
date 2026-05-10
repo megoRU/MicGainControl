@@ -100,9 +100,11 @@ void RegisterAutostart() {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
 
+    std::wstring quotedPath = L"\"" + std::wstring(exePath) + L"\"";
+
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, L"MicLock", 0, REG_SZ, (BYTE*)exePath, (DWORD)(wcslen(exePath) + 1) * sizeof(wchar_t));
+        RegSetValueExW(hKey, L"MicLock", 0, REG_SZ, (BYTE*)quotedPath.c_str(), (DWORD)(quotedPath.length() + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 }
