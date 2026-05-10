@@ -37,8 +37,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/Release/MicGainControl.exe
-          tag_name: latest
-          name: Latest Release
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
           draft: false
           prerelease: false
         env:
