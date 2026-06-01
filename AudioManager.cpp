@@ -67,6 +67,31 @@ void AudioManager::SetEnabled(bool enabled) {
     }
 }
 
+void AudioManager::ApplyVolumeImmediately(float volume) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    if (volume < 0.0f) {
+        volume = 0.0f;
+    }
+    if (volume > 1.0f) {
+        volume = 1.0f;
+    }
+
+    m_targetVolume = volume;
+
+    if (!m_volumeControl) {
+        return;
+    }
+
+    m_volumeControl->SetMasterVolumeLevelScalar(m_targetVolume, &m_contextGuid);
+
+    BOOL mute = FALSE;
+    m_volumeControl->GetMute(&mute);
+    if (mute) {
+        m_volumeControl->SetMute(FALSE, &m_contextGuid);
+    }
+}
+
 void AudioManager::EnforceVolume() {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!m_enabled || !m_volumeControl) return;
