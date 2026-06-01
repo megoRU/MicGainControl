@@ -30,6 +30,14 @@ add_executable(MicGainControl
     ${RESOURCE_FILES}
 )
 
+
+if(MSVC)
+    target_link_options(MicGainControl PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/app.manifest"
+    )
+endif()
+
 target_link_libraries(MicGainControl PRIVATE
     Ole32
     Shell32
