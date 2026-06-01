@@ -379,21 +379,20 @@ private:
         int margin = Scale(kContentMargin);
         int contentWidth = clientRectangle.right - clientRectangle.left - (margin * 2);
         int titleHeight = Scale(24);
-        int toggleWidth = Scale(132);
-        int descriptionHeight = Scale(34);
+        int toggleWidth = Scale(110);
+        int descriptionHeight = Scale(24);
         int captionHeight = Scale(22);
         int valueWidth = Scale(72);
         int trackbarHeight = Scale(42);
         int footerHeight = Scale(22);
-        int linkWidth = Scale(160);
+        int linkWidth = Scale(80);
         int y = margin;
 
-        MoveWindow(m_hTitleLabel, margin, y, contentWidth - toggleWidth - Scale(12), titleHeight, TRUE);
-        MoveWindow(m_hEnabledToggle, clientRectangle.right - margin - toggleWidth, y - Scale(2), toggleWidth, Scale(30), TRUE);
+        MoveWindow(m_hTitleLabel, margin, y, contentWidth, titleHeight, TRUE);
         y += titleHeight + Scale(4);
 
         MoveWindow(m_hDescriptionLabel, margin, y, contentWidth, descriptionHeight, TRUE);
-        y += descriptionHeight + Scale(12);
+        y += descriptionHeight + Scale(16);
 
         MoveWindow(m_hVolumeCaptionLabel, margin, y, contentWidth - valueWidth - Scale(12), captionHeight, TRUE);
         MoveWindow(m_hVolumeValueLabel, clientRectangle.right - margin - valueWidth, y, valueWidth, captionHeight, TRUE);
@@ -401,8 +400,10 @@ private:
 
         MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
 
-        MoveWindow(m_hGithubLink, margin, clientRectangle.bottom - margin - footerHeight, linkWidth, footerHeight, TRUE);
-        MoveWindow(m_hVersionLabel, margin + linkWidth + Scale(8), clientRectangle.bottom - margin - footerHeight, contentWidth - linkWidth - Scale(8), footerHeight, TRUE);
+        int footerY = clientRectangle.bottom - margin - footerHeight;
+        MoveWindow(m_hGithubLink, margin, footerY, linkWidth, footerHeight, TRUE);
+        MoveWindow(m_hVersionLabel, margin + linkWidth + Scale(8), footerY, contentWidth - linkWidth - toggleWidth - Scale(16), footerHeight, TRUE);
+        MoveWindow(m_hEnabledToggle, clientRectangle.right - margin - toggleWidth, footerY - Scale(4), toggleWidth, Scale(30), TRUE);
     }
 
     void SubclassTrackbar() {
@@ -597,7 +598,7 @@ private:
     }
 
     void DrawEnabledToggle(const DRAWITEMSTRUCT* drawItem) {
-        bool enabled = SendMessageW(drawItem->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        bool enabled = m_configManager.GetConfig().enabled;
         RECT itemRectangle = drawItem->rcItem;
         FillRect(drawItem->hDC, &itemRectangle, m_hBackgroundBrush);
 
@@ -711,14 +712,14 @@ private:
         UpdateWindowIcons();
         RefreshTheme();
 
-        ShowWindow(m_hWnd, SW_SHOWNORMAL);
+        ShowWindow(m_hWnd, SW_HIDE);
         UpdateWindow(m_hWnd);
         return true;
     }
 
     void CreateChildControls(HWND hWnd) {
         m_hTitleLabel = CreateWindowExW(0, L"STATIC", L"Громкость микрофона", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTitleLabelId), m_hInstance, NULL);
-        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу и сохраняются в настройках приложения.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
+        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
         m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
         m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
@@ -774,11 +775,9 @@ private:
             return;
         }
 
-        bool enabled = SendMessageW(m_hEnabledToggle, BM_GETCHECK, 0, 0) != BST_CHECKED;
-        SendMessageW(m_hEnabledToggle, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        bool enabled = !m_configManager.GetConfig().enabled;
         m_configManager.SetEnabled(enabled);
-        ApplyConfig(m_configManager.GetConfig(), false);
-        InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
+        ApplyConfig(m_configManager.GetConfig(), true);
     }
 
     void UpdateVolumeLabel(int volumePercent) {
