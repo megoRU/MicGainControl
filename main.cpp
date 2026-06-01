@@ -33,9 +33,9 @@
 
 namespace {
 constexpr int kBaseWindowClientWidth = 520;
-constexpr int kBaseWindowClientHeight = 230;
+constexpr int kBaseWindowClientHeight = 250;
 constexpr int kMinimumWindowClientWidth = 460;
-constexpr int kMinimumWindowClientHeight = 220;
+constexpr int kMinimumWindowClientHeight = 240;
 constexpr int kContentMargin = 20;
 constexpr int kTrackbarId = 1002;
 constexpr int kTitleLabelId = 1003;
@@ -399,11 +399,13 @@ private:
         y += captionHeight + Scale(4);
 
         MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
+        y += trackbarHeight + Scale(8);
+
+        MoveWindow(m_hEnabledToggle, margin, y, toggleWidth, Scale(30), TRUE);
 
         int footerY = clientRectangle.bottom - margin - footerHeight;
         MoveWindow(m_hGithubLink, margin, footerY, linkWidth, footerHeight, TRUE);
-        MoveWindow(m_hVersionLabel, margin + linkWidth + Scale(8), footerY, contentWidth - linkWidth - toggleWidth - Scale(16), footerHeight, TRUE);
-        MoveWindow(m_hEnabledToggle, clientRectangle.right - margin - toggleWidth, footerY - Scale(4), toggleWidth, Scale(30), TRUE);
+        MoveWindow(m_hVersionLabel, clientRectangle.right - margin - (contentWidth / 2), footerY, (contentWidth / 2), footerHeight, TRUE);
     }
 
     void SubclassTrackbar() {
@@ -551,6 +553,8 @@ private:
         Gdiplus::Graphics graphics(deviceContext);
         ConfigureHighQualityGraphics(graphics);
 
+        bool enabled = IsWindowEnabled(m_hTrackbar);
+
         TrackbarGeometry geometry = GetTrackbarGeometry();
         Gdiplus::GraphicsPath inactivePath;
         AddCapsulePath(inactivePath, geometry.trackRectangle);
@@ -563,7 +567,7 @@ private:
             Gdiplus::RectF activeRectangle(geometry.trackRectangle.X, geometry.trackRectangle.Y, activeWidth, geometry.trackRectangle.Height);
             Gdiplus::GraphicsPath activePath;
             AddCapsulePath(activePath, activeRectangle);
-            Gdiplus::SolidBrush activeBrush(ToGdiplusColor(m_themeColors.accentColor));
+            Gdiplus::SolidBrush activeBrush(ToGdiplusColor(enabled ? m_themeColors.accentColor : m_themeColors.trackColor));
             graphics.FillPath(&activeBrush, &activePath);
         }
     }
@@ -571,6 +575,8 @@ private:
     void DrawTrackbarThumb(HDC deviceContext) {
         Gdiplus::Graphics graphics(deviceContext);
         ConfigureHighQualityGraphics(graphics);
+
+        bool enabled = IsWindowEnabled(m_hTrackbar);
 
         TrackbarGeometry geometry = GetTrackbarGeometry();
         float borderWidth = static_cast<float>(Scale(3));
@@ -588,9 +594,9 @@ private:
             geometry.thumbDiameter - (borderWidth * 2.0f)
         );
 
-        Gdiplus::SolidBrush borderBrush(ToGdiplusColor(m_themeColors.thumbBorderColor));
-        Gdiplus::SolidBrush thumbBrush(ToGdiplusColor(m_themeColors.thumbFillColor));
-        Gdiplus::Pen borderPen(ToGdiplusColor(m_themeColors.thumbBorderColor), 1.0f);
+        Gdiplus::SolidBrush borderBrush(ToGdiplusColor(enabled ? m_themeColors.thumbBorderColor : m_themeColors.trackColor));
+        Gdiplus::SolidBrush thumbBrush(ToGdiplusColor(enabled ? m_themeColors.thumbFillColor : m_themeColors.backgroundColor));
+        Gdiplus::Pen borderPen(ToGdiplusColor(enabled ? m_themeColors.thumbBorderColor : m_themeColors.trackColor), 1.0f);
 
         graphics.FillEllipse(&borderBrush, outerThumbRectangle);
         graphics.FillEllipse(&thumbBrush, innerThumbRectangle);
@@ -766,8 +772,13 @@ private:
             return;
         }
 
-        SendMessageW(m_hEnabledToggle, BM_SETCHECK, m_configManager.GetConfig().enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        bool enabled = m_configManager.GetConfig().enabled;
+        SendMessageW(m_hEnabledToggle, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        EnableWindow(m_hTrackbar, enabled ? TRUE : FALSE);
         InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
+        InvalidateRect(m_hTrackbar, nullptr, FALSE);
+
+        // Also update color of labels if needed, but for now just the trackbar
     }
 
     void HandleEnabledToggleClicked() {
@@ -857,11 +868,12 @@ private:
             }
             return 0;
         case WM_MOUSEMOVE:
-            if (app->m_trackbarDragging) {
+            if (app->m_trackbarDragging && IsWindowEnabled(hWnd)) {
                 app->SetTrackbarPositionFromPoint(lParam, false);
             }
             return 0;
         case WM_LBUTTONDOWN:
+            if (!IsWindowEnabled(hWnd)) return 0;
             SetFocus(hWnd);
             SetCapture(hWnd);
             app->m_trackbarDragging = true;
