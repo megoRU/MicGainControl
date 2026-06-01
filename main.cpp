@@ -3,6 +3,8 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <gdiplus.h>
+#include <shellapi.h>
+#include <windowsx.h>
 #include "ConfigManager.hpp"
 #include "AudioManager.hpp"
 #include "TrayManager.hpp"
@@ -41,9 +43,11 @@ constexpr int kDescriptionLabelId = 1004;
 constexpr int kVolumeCaptionLabelId = 1005;
 constexpr int kVolumeValueLabelId = 1006;
 constexpr int kVersionLabelId = 1007;
+constexpr int kGithubLinkId = 1008;
 constexpr int kTrackThumbDiameter = 26;
 constexpr int kTrackChannelHeight = 14;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
+constexpr wchar_t kGithubReleasesUrl[] = L"https://github.com/megoRU/MicGainControl/releases";
 
 struct ThemeColors {
     COLORREF backgroundColor;
@@ -254,12 +258,17 @@ private:
             DeleteObject(m_hSecondaryFont);
             m_hSecondaryFont = NULL;
         }
+        if (m_hLinkFont) {
+            DeleteObject(m_hLinkFont);
+            m_hLinkFont = NULL;
+        }
     }
 
-    HFONT CreateSegoeFont(int pointSize, LONG weight) const {
+    HFONT CreateSegoeFont(int pointSize, LONG weight, bool underline) const {
         LOGFONTW logFont = {};
         logFont.lfHeight = PointsToPixels(pointSize);
         logFont.lfWeight = weight;
+        logFont.lfUnderline = underline ? TRUE : FALSE;
         logFont.lfQuality = CLEARTYPE_QUALITY;
         wcscpy_s(logFont.lfFaceName, L"Segoe UI");
         return CreateFontIndirectW(&logFont);
@@ -267,9 +276,10 @@ private:
 
     void RecreateFonts() {
         DestroyFonts();
-        m_hTitleFont = CreateSegoeFont(11, FW_SEMIBOLD);
-        m_hTextFont = CreateSegoeFont(9, FW_NORMAL);
-        m_hSecondaryFont = CreateSegoeFont(9, FW_NORMAL);
+        m_hTitleFont = CreateSegoeFont(11, FW_SEMIBOLD, false);
+        m_hTextFont = CreateSegoeFont(9, FW_NORMAL, false);
+        m_hSecondaryFont = CreateSegoeFont(9, FW_NORMAL, false);
+        m_hLinkFont = CreateSegoeFont(9, FW_NORMAL, true);
         ApplyFontsToControls();
     }
 
@@ -288,6 +298,9 @@ private:
         }
         if (m_hVersionLabel && m_hSecondaryFont) {
             SendMessageW(m_hVersionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hSecondaryFont), TRUE);
+        }
+        if (m_hGithubLink && m_hLinkFont) {
+            SendMessageW(m_hGithubLink, WM_SETFONT, reinterpret_cast<WPARAM>(m_hLinkFont), TRUE);
         }
     }
 
@@ -367,6 +380,7 @@ private:
         int valueWidth = Scale(72);
         int trackbarHeight = Scale(42);
         int footerHeight = Scale(22);
+        int linkWidth = Scale(160);
         int y = margin;
 
         MoveWindow(m_hTitleLabel, margin, y, contentWidth, titleHeight, TRUE);
@@ -381,7 +395,8 @@ private:
 
         MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
 
-        MoveWindow(m_hVersionLabel, margin, clientRectangle.bottom - margin - footerHeight, contentWidth, footerHeight, TRUE);
+        MoveWindow(m_hGithubLink, margin, clientRectangle.bottom - margin - footerHeight, linkWidth, footerHeight, TRUE);
+        MoveWindow(m_hVersionLabel, margin + linkWidth + Scale(8), clientRectangle.bottom - margin - footerHeight, contentWidth - linkWidth - Scale(8), footerHeight, TRUE);
     }
 
     void SubclassTrackbar() {
@@ -409,6 +424,32 @@ private:
         FillRect(deviceContext, &clientRectangle, m_hBackgroundBrush);
         DrawTrackbarChannel(deviceContext);
         DrawTrackbarThumb(deviceContext);
+    }
+
+    void SetTrackbarPositionFromPoint(LPARAM lParam) {
+        if (!m_hTrackbar) {
+            return;
+        }
+
+        TrackbarGeometry geometry = GetTrackbarGeometry();
+        float x = static_cast<float>(GET_X_LPARAM(lParam));
+        float trackStart = geometry.trackRectangle.X;
+        float trackEnd = geometry.trackRectangle.X + geometry.trackRectangle.Width;
+        if (x < trackStart) {
+            x = trackStart;
+        }
+        if (x > trackEnd) {
+            x = trackEnd;
+        }
+
+        float ratio = 0.0f;
+        if (geometry.trackRectangle.Width > 0.0f) {
+            ratio = (x - trackStart) / geometry.trackRectangle.Width;
+        }
+
+        int volumePercent = ClampPercent(static_cast<int>((ratio * 100.0f) + 0.5f));
+        SendMessageW(m_hTrackbar, TBM_SETPOS, TRUE, volumePercent);
+        HandleTrackbarChanged();
     }
 
     bool DrawTrackbarPart(NMCUSTOMDRAW* customDraw) {
@@ -524,7 +565,9 @@ private:
     LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
         SetBkMode(deviceContext, TRANSPARENT);
 
-        if (controlWindow == m_hDescriptionLabel || controlWindow == m_hVersionLabel) {
+        if (controlWindow == m_hGithubLink) {
+            SetTextColor(deviceContext, m_themeColors.accentColor);
+        } else if (controlWindow == m_hDescriptionLabel || controlWindow == m_hVersionLabel) {
             SetTextColor(deviceContext, m_themeColors.secondaryTextColor);
         } else {
             SetTextColor(deviceContext, m_themeColors.textColor);
@@ -600,7 +643,8 @@ private:
         m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу и сохраняются в настройках приложения.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
         m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
-        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
+        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
+        m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub releases", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
         m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
@@ -712,17 +756,33 @@ private:
                 EndPaint(hWnd, &paintStruct);
             }
             return 0;
-        case WM_LBUTTONDOWN:
-        case WM_LBUTTONUP:
         case WM_MOUSEMOVE:
+            if (app->m_trackbarDragging) {
+                app->SetTrackbarPositionFromPoint(lParam);
+            }
+            return 0;
+        case WM_LBUTTONDOWN:
+            SetFocus(hWnd);
+            SetCapture(hWnd);
+            app->m_trackbarDragging = true;
+            app->SetTrackbarPositionFromPoint(lParam);
+            return 0;
+        case WM_LBUTTONUP:
+            if (app->m_trackbarDragging) {
+                app->SetTrackbarPositionFromPoint(lParam);
+                app->m_trackbarDragging = false;
+                ReleaseCapture();
+            }
+            return 0;
         case WM_KEYDOWN:
-        case WM_KEYUP:
         case WM_MOUSEWHEEL:
             {
                 LRESULT result = CallWindowProcW(app->m_originalTrackbarProc, hWnd, uMsg, wParam, lParam);
-                InvalidateRect(hWnd, nullptr, TRUE);
+                app->HandleTrackbarChanged();
                 return result;
             }
+        case WM_KEYUP:
+            return CallWindowProcW(app->m_originalTrackbarProc, hWnd, uMsg, wParam, lParam);
         }
 
         return CallWindowProcW(app->m_originalTrackbarProc, hWnd, uMsg, wParam, lParam);
@@ -761,6 +821,18 @@ private:
                 if (reinterpret_cast<HWND>(lParam) == app->m_hTrackbar) {
                     app->HandleTrackbarChanged();
                     return 0;
+                }
+                break;
+            case WM_COMMAND:
+                if (LOWORD(wParam) == kGithubLinkId && HIWORD(wParam) == STN_CLICKED) {
+                    ShellExecuteW(hWnd, L"open", kGithubReleasesUrl, NULL, NULL, SW_SHOWNORMAL);
+                    return 0;
+                }
+                break;
+            case WM_SETCURSOR:
+                if (reinterpret_cast<HWND>(wParam) == app->m_hGithubLink) {
+                    SetCursor(LoadCursorW(NULL, IDC_HAND));
+                    return TRUE;
                 }
                 break;
             case WM_NOTIFY:
@@ -807,6 +879,10 @@ private:
                 }
                 return 0;
             case WM_DESTROY:
+                if (app->m_trackbarDragging) {
+                    app->m_trackbarDragging = false;
+                    ReleaseCapture();
+                }
                 app->RestoreTrackbarSubclass();
                 app->DestroyWindowIcons();
                 if (app->m_allowExit) {
@@ -825,6 +901,7 @@ private:
     HFONT m_hTitleFont = NULL;
     HFONT m_hTextFont = NULL;
     HFONT m_hSecondaryFont = NULL;
+    HFONT m_hLinkFont = NULL;
     HWND m_hWnd = NULL;
     HWND m_hTitleLabel = NULL;
     HWND m_hDescriptionLabel = NULL;
@@ -832,10 +909,12 @@ private:
     HWND m_hVolumeValueLabel = NULL;
     HWND m_hTrackbar = NULL;
     HWND m_hVersionLabel = NULL;
+    HWND m_hGithubLink = NULL;
     WNDPROC m_originalTrackbarProc = nullptr;
     HICON m_hSmallIcon = NULL;
     HICON m_hBigIcon = NULL;
     bool m_darkModeEnabled = false;
+    bool m_trackbarDragging = false;
     bool m_allowExit = false;
     ConfigManager m_configManager;
     AudioManager m_audioManager;
