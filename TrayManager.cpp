@@ -43,7 +43,7 @@ void TrayManager::ShowContextMenu(HWND hWnd) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
         AppendMenuW(hMenu, MF_STRING | (m_enabled ? MF_CHECKED : 0), 1, L"Enabled");
-        AppendMenuW(hMenu, MF_STRING, 2, L"Open Config");
+        AppendMenuW(hMenu, MF_STRING, 2, L"Open Window");
         AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenuW(hMenu, MF_STRING, 3, L"Exit");
 

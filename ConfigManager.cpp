@@ -134,6 +134,18 @@ void ConfigManager::SetEnabled(bool enabled) {
     Save();
 }
 
+void ConfigManager::SetMicrophoneVolume(float volume) {
+    if (volume < 0.0f) {
+        volume = 0.0f;
+    }
+    if (volume > 1.0f) {
+        volume = 1.0f;
+    }
+
+    m_config.microphoneVolume = volume;
+    Save();
+}
+
 void ConfigManager::SetCallback(ConfigChangedCallback callback) {
     m_callback = callback;
 }

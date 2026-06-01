@@ -17,6 +17,7 @@ public:
     bool Initialize();
     void SetTargetVolume(float volume);
     void SetEnabled(bool enabled);
+    void ApplyVolumeImmediately(float volume);
     void EnforceVolume();
 
     // IUnknown
