@@ -278,8 +278,8 @@ private:
         DestroyFonts();
         m_hTitleFont = CreateSegoeFont(11, FW_SEMIBOLD, false);
         m_hTextFont = CreateSegoeFont(9, FW_NORMAL, false);
-        m_hSecondaryFont = CreateSegoeFont(9, FW_NORMAL, false);
-        m_hLinkFont = CreateSegoeFont(9, FW_NORMAL, true);
+        m_hSecondaryFont = CreateSegoeFont(10, FW_NORMAL, false);
+        m_hLinkFont = CreateSegoeFont(10, FW_NORMAL, true);
         ApplyFontsToControls();
     }
 
@@ -442,7 +442,7 @@ private:
         DeleteDC(memoryDeviceContext);
     }
 
-    void SetTrackbarPositionFromPoint(LPARAM lParam) {
+    void SetTrackbarPositionFromPoint(LPARAM lParam, bool applyImmediately) {
         if (!m_hTrackbar) {
             return;
         }
@@ -465,7 +465,12 @@ private:
 
         int volumePercent = ClampPercent(static_cast<int>((ratio * 100.0f) + 0.5f));
         SendMessageW(m_hTrackbar, TBM_SETPOS, FALSE, volumePercent);
-        HandleTrackbarChanged();
+        if (applyImmediately) {
+            HandleTrackbarChanged();
+        } else {
+            UpdateVolumeLabel(volumePercent);
+            InvalidateRect(m_hTrackbar, nullptr, FALSE);
+        }
     }
 
     bool DrawTrackbarPart(NMCUSTOMDRAW* customDraw) {
@@ -781,18 +786,18 @@ private:
             return 0;
         case WM_MOUSEMOVE:
             if (app->m_trackbarDragging) {
-                app->SetTrackbarPositionFromPoint(lParam);
+                app->SetTrackbarPositionFromPoint(lParam, false);
             }
             return 0;
         case WM_LBUTTONDOWN:
             SetFocus(hWnd);
             SetCapture(hWnd);
             app->m_trackbarDragging = true;
-            app->SetTrackbarPositionFromPoint(lParam);
+            app->SetTrackbarPositionFromPoint(lParam, false);
             return 0;
         case WM_LBUTTONUP:
             if (app->m_trackbarDragging) {
-                app->SetTrackbarPositionFromPoint(lParam);
+                app->SetTrackbarPositionFromPoint(lParam, true);
                 app->m_trackbarDragging = false;
                 ReleaseCapture();
             }
