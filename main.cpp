@@ -357,10 +357,10 @@ private:
         }
 
         if (m_hWnd) {
-            InvalidateRect(m_hWnd, nullptr, TRUE);
+            InvalidateRect(m_hWnd, nullptr, FALSE);
         }
         if (m_hTrackbar) {
-            InvalidateRect(m_hTrackbar, nullptr, TRUE);
+            InvalidateRect(m_hTrackbar, nullptr, FALSE);
         }
     }
 
@@ -421,9 +421,25 @@ private:
     void PaintTrackbar(HDC deviceContext) {
         RECT clientRectangle = { 0, 0, 0, 0 };
         GetClientRect(m_hTrackbar, &clientRectangle);
-        FillRect(deviceContext, &clientRectangle, m_hBackgroundBrush);
-        DrawTrackbarChannel(deviceContext);
-        DrawTrackbarThumb(deviceContext);
+
+        int width = clientRectangle.right - clientRectangle.left;
+        int height = clientRectangle.bottom - clientRectangle.top;
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        HDC memoryDeviceContext = CreateCompatibleDC(deviceContext);
+        HBITMAP memoryBitmap = CreateCompatibleBitmap(deviceContext, width, height);
+        HGDIOBJ previousBitmap = SelectObject(memoryDeviceContext, memoryBitmap);
+
+        FillRect(memoryDeviceContext, &clientRectangle, m_hBackgroundBrush);
+        DrawTrackbarChannel(memoryDeviceContext);
+        DrawTrackbarThumb(memoryDeviceContext);
+        BitBlt(deviceContext, 0, 0, width, height, memoryDeviceContext, 0, 0, SRCCOPY);
+
+        SelectObject(memoryDeviceContext, previousBitmap);
+        DeleteObject(memoryBitmap);
+        DeleteDC(memoryDeviceContext);
     }
 
     void SetTrackbarPositionFromPoint(LPARAM lParam) {
@@ -448,7 +464,7 @@ private:
         }
 
         int volumePercent = ClampPercent(static_cast<int>((ratio * 100.0f) + 0.5f));
-        SendMessageW(m_hTrackbar, TBM_SETPOS, TRUE, volumePercent);
+        SendMessageW(m_hTrackbar, TBM_SETPOS, FALSE, volumePercent);
         HandleTrackbarChanged();
     }
 
@@ -552,14 +568,21 @@ private:
 
         float thumbLeft = geometry.thumbCenterX - (geometry.thumbDiameter / 2.0f);
         float thumbTop = geometry.thumbCenterY - (geometry.thumbDiameter / 2.0f);
-        Gdiplus::RectF thumbRectangle(thumbLeft, thumbTop, geometry.thumbDiameter, geometry.thumbDiameter);
+        Gdiplus::RectF outerThumbRectangle(thumbLeft, thumbTop, geometry.thumbDiameter, geometry.thumbDiameter);
+        Gdiplus::RectF innerThumbRectangle(
+            thumbLeft + borderWidth,
+            thumbTop + borderWidth,
+            geometry.thumbDiameter - (borderWidth * 2.0f),
+            geometry.thumbDiameter - (borderWidth * 2.0f)
+        );
 
+        Gdiplus::SolidBrush borderBrush(ToGdiplusColor(m_themeColors.thumbBorderColor));
         Gdiplus::SolidBrush thumbBrush(ToGdiplusColor(m_themeColors.thumbFillColor));
-        Gdiplus::Pen borderPen(ToGdiplusColor(m_themeColors.thumbBorderColor), borderWidth);
-        borderPen.SetAlignment(Gdiplus::PenAlignmentInset);
+        Gdiplus::Pen borderPen(ToGdiplusColor(m_themeColors.thumbBorderColor), 1.0f);
 
-        graphics.FillEllipse(&thumbBrush, thumbRectangle);
-        graphics.DrawEllipse(&borderPen, thumbRectangle);
+        graphics.FillEllipse(&borderBrush, outerThumbRectangle);
+        graphics.FillEllipse(&thumbBrush, innerThumbRectangle);
+        graphics.DrawEllipse(&borderPen, outerThumbRectangle);
     }
 
     LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
@@ -644,7 +667,7 @@ private:
         m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
-        m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub releases", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
+        m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
         m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
@@ -674,8 +697,8 @@ private:
     void UpdateTrackbarFromConfig() {
         int trackbarPosition = VolumeToPercent(m_configManager.GetConfig().microphoneVolume);
         if (m_hTrackbar) {
-            SendMessageW(m_hTrackbar, TBM_SETPOS, TRUE, trackbarPosition);
-            InvalidateRect(m_hTrackbar, nullptr, TRUE);
+            SendMessageW(m_hTrackbar, TBM_SETPOS, FALSE, trackbarPosition);
+            InvalidateRect(m_hTrackbar, nullptr, FALSE);
         }
         UpdateVolumeLabel(trackbarPosition);
     }
@@ -695,7 +718,7 @@ private:
         m_configManager.SetMicrophoneVolume(volume);
         m_audioManager.ApplyVolumeImmediately(volume);
         UpdateVolumeLabel(volumePercent);
-        InvalidateRect(m_hTrackbar, nullptr, TRUE);
+        InvalidateRect(m_hTrackbar, nullptr, FALSE);
     }
 
     void ShowMainWindow() {
@@ -726,7 +749,7 @@ private:
             SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, Scale(kTrackThumbDiameter), 0);
         }
         LayoutControls();
-        InvalidateRect(m_hWnd, nullptr, TRUE);
+        InvalidateRect(m_hWnd, nullptr, FALSE);
     }
 
     void HandleGetMinMaxInfo(LPARAM lParam) {
