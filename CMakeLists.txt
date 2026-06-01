@@ -45,4 +45,6 @@ target_link_libraries(MicGainControl PRIVATE
     Advapi32
     Mmdevapi
     Comctl32
+    Dwmapi
+    UxTheme
 )

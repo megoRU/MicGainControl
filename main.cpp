@@ -1,5 +1,7 @@
 #include <windows.h>
 #include <commctrl.h>
+#include <dwmapi.h>
+#include <uxtheme.h>
 #include "ConfigManager.hpp"
 #include "AudioManager.hpp"
 #include "TrayManager.hpp"
@@ -22,60 +24,86 @@
 #define TBCD_CHANNEL 0x0003
 #endif
 
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+
 namespace {
-constexpr int kWindowClientWidth = 420;
-constexpr int kWindowClientHeight = 190;
-constexpr int kVolumeTrackbarId = 1002;
-constexpr int kVolumeValueLabelId = 1003;
+constexpr int kBaseWindowClientWidth = 520;
+constexpr int kBaseWindowClientHeight = 260;
+constexpr int kMinimumWindowClientWidth = 460;
+constexpr int kMinimumWindowClientHeight = 240;
+constexpr int kContentMargin = 20;
+constexpr int kTrackbarId = 1002;
+constexpr int kTitleLabelId = 1003;
 constexpr int kDescriptionLabelId = 1004;
-constexpr int kVersionLabelId = 1005;
-constexpr COLORREF kAccentColor = RGB(0, 120, 215);
-constexpr COLORREF kTrackBackgroundColor = RGB(225, 229, 235);
-constexpr COLORREF kWindowBackgroundColor = RGB(255, 255, 255);
-constexpr COLORREF kTextColor = RGB(32, 32, 32);
-constexpr int kTrackThumbDiameter = 20;
+constexpr int kVolumeCaptionLabelId = 1005;
+constexpr int kVolumeValueLabelId = 1006;
+constexpr int kVersionLabelId = 1007;
+constexpr int kTrackThumbDiameter = 22;
 constexpr int kTrackChannelHeight = 6;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
 
-std::wstring MakeVolumeLabelText(float volume) {
-    int volumePercent = static_cast<int>((volume * 100.0f) + 0.5f);
-    if (volumePercent < 0) {
-        volumePercent = 0;
-    }
-    if (volumePercent > 100) {
-        volumePercent = 100;
-    }
+struct ThemeColors {
+    COLORREF backgroundColor;
+    COLORREF textColor;
+    COLORREF secondaryTextColor;
+    COLORREF trackColor;
+    COLORREF accentColor;
+    COLORREF thumbFillColor;
+};
 
-    return L"Громкость микрофона: " + std::to_wstring(volumePercent) + L"%";
+int ClampPercent(int value) {
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 100) {
+        return 100;
+    }
+    return value;
+}
+
+int VolumeToPercent(float volume) {
+    return ClampPercent(static_cast<int>((volume * 100.0f) + 0.5f));
+}
+
+std::wstring MakeVolumePercentText(int volumePercent) {
+    return std::to_wstring(ClampPercent(volumePercent)) + L"%";
 }
 
 HMENU ControlIdToMenuHandle(int controlId) {
     return reinterpret_cast<HMENU>(static_cast<INT_PTR>(controlId));
 }
 
-int VolumeToTrackbarPosition(float volume) {
-    int volumePercent = static_cast<int>((volume * 100.0f) + 0.5f);
-    if (volumePercent < 0) {
-        volumePercent = 0;
-    }
-    if (volumePercent > 100) {
-        volumePercent = 100;
+bool IsWindowsDarkThemeEnabled() {
+    DWORD appsUseLightTheme = 1;
+    DWORD valueSize = sizeof(appsUseLightTheme);
+    LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &appsUseLightTheme,
+        &valueSize
+    );
+
+    if (status != ERROR_SUCCESS) {
+        return false;
     }
 
-    return volumePercent;
+    return appsUseLightTheme == 0;
 }
 }
 
 class Application {
 public:
-    Application(HINSTANCE hInstance) : m_hInstance(hInstance), m_hBackgroundBrush(CreateSolidBrush(kWindowBackgroundColor)), m_trayManager(hInstance) {}
+    Application(HINSTANCE hInstance) : m_hInstance(hInstance), m_trayManager(hInstance) {}
 
     ~Application() {
         DestroyWindowIcons();
-        if (m_hBackgroundBrush) {
-            DeleteObject(m_hBackgroundBrush);
-            m_hBackgroundBrush = NULL;
-        }
+        DestroyFonts();
+        DestroyBrushes();
     }
 
     bool Initialize() {
@@ -120,6 +148,14 @@ public:
     }
 
 private:
+    int Scale(int value) const {
+        return MulDiv(value, static_cast<int>(m_dpi), 96);
+    }
+
+    int PointsToPixels(int points) const {
+        return -MulDiv(points, static_cast<int>(m_dpi), 72);
+    }
+
     int GetSystemMetricForDpi(int metric, UINT dpi) const {
         return GetSystemMetricsForDpi(metric, dpi);
     }
@@ -167,6 +203,147 @@ private:
         }
     }
 
+    void DestroyFonts() {
+        if (m_hTitleFont) {
+            DeleteObject(m_hTitleFont);
+            m_hTitleFont = NULL;
+        }
+        if (m_hTextFont) {
+            DeleteObject(m_hTextFont);
+            m_hTextFont = NULL;
+        }
+        if (m_hSecondaryFont) {
+            DeleteObject(m_hSecondaryFont);
+            m_hSecondaryFont = NULL;
+        }
+    }
+
+    HFONT CreateSegoeFont(int pointSize, LONG weight) const {
+        LOGFONTW logFont = {};
+        logFont.lfHeight = PointsToPixels(pointSize);
+        logFont.lfWeight = weight;
+        logFont.lfQuality = CLEARTYPE_QUALITY;
+        wcscpy_s(logFont.lfFaceName, L"Segoe UI");
+        return CreateFontIndirectW(&logFont);
+    }
+
+    void RecreateFonts() {
+        DestroyFonts();
+        m_hTitleFont = CreateSegoeFont(11, FW_SEMIBOLD);
+        m_hTextFont = CreateSegoeFont(9, FW_NORMAL);
+        m_hSecondaryFont = CreateSegoeFont(9, FW_NORMAL);
+        ApplyFontsToControls();
+    }
+
+    void ApplyFontsToControls() {
+        if (m_hTitleLabel && m_hTitleFont) {
+            SendMessageW(m_hTitleLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTitleFont), TRUE);
+        }
+        if (m_hDescriptionLabel && m_hSecondaryFont) {
+            SendMessageW(m_hDescriptionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hSecondaryFont), TRUE);
+        }
+        if (m_hVolumeCaptionLabel && m_hTextFont) {
+            SendMessageW(m_hVolumeCaptionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTextFont), TRUE);
+        }
+        if (m_hVolumeValueLabel && m_hTitleFont) {
+            SendMessageW(m_hVolumeValueLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTitleFont), TRUE);
+        }
+        if (m_hVersionLabel && m_hSecondaryFont) {
+            SendMessageW(m_hVersionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hSecondaryFont), TRUE);
+        }
+    }
+
+    void DestroyBrushes() {
+        if (m_hBackgroundBrush) {
+            DeleteObject(m_hBackgroundBrush);
+            m_hBackgroundBrush = NULL;
+        }
+    }
+
+    ThemeColors GetThemeColors(bool darkModeEnabled) const {
+        if (darkModeEnabled) {
+            return ThemeColors{
+                RGB(32, 32, 32),
+                RGB(243, 243, 243),
+                RGB(200, 200, 200),
+                RGB(72, 72, 72),
+                RGB(96, 205, 255),
+                RGB(32, 32, 32)
+            };
+        }
+
+        return ThemeColors{
+            RGB(249, 249, 249),
+            RGB(32, 32, 32),
+            RGB(96, 96, 96),
+            RGB(214, 218, 224),
+            RGB(0, 120, 215),
+            RGB(249, 249, 249)
+        };
+    }
+
+    void RefreshTheme() {
+        m_darkModeEnabled = IsWindowsDarkThemeEnabled();
+        m_themeColors = GetThemeColors(m_darkModeEnabled);
+
+        DestroyBrushes();
+        m_hBackgroundBrush = CreateSolidBrush(m_themeColors.backgroundColor);
+
+        if (m_hWnd) {
+            BOOL useDarkMode = m_darkModeEnabled ? TRUE : FALSE;
+            DwmSetWindowAttribute(m_hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDarkMode, sizeof(useDarkMode));
+        }
+
+        ApplyThemeToControls();
+    }
+
+    void ApplyThemeToControls() {
+        LPCWSTR controlTheme = m_darkModeEnabled ? L"DarkMode_Explorer" : L"Explorer";
+        if (m_hTrackbar) {
+            SetWindowTheme(m_hTrackbar, controlTheme, nullptr);
+        }
+
+        if (m_hWnd) {
+            InvalidateRect(m_hWnd, nullptr, TRUE);
+        }
+        if (m_hTrackbar) {
+            InvalidateRect(m_hTrackbar, nullptr, TRUE);
+        }
+    }
+
+    void LayoutControls() {
+        if (!m_hWnd) {
+            return;
+        }
+
+        RECT clientRectangle = { 0, 0, 0, 0 };
+        GetClientRect(m_hWnd, &clientRectangle);
+
+        int margin = Scale(kContentMargin);
+        int contentWidth = clientRectangle.right - clientRectangle.left - (margin * 2);
+        int titleHeight = Scale(24);
+        int descriptionHeight = Scale(38);
+        int captionHeight = Scale(22);
+        int valueWidth = Scale(72);
+        int trackbarHeight = Scale(48);
+        int footerHeight = Scale(22);
+        int y = margin;
+
+        MoveWindow(m_hTitleLabel, margin, y, contentWidth, titleHeight, TRUE);
+        y += titleHeight + Scale(4);
+
+        MoveWindow(m_hDescriptionLabel, margin, y, contentWidth, descriptionHeight, TRUE);
+        y += descriptionHeight + Scale(16);
+
+        MoveWindow(m_hVolumeCaptionLabel, margin, y, contentWidth - valueWidth - Scale(12), captionHeight, TRUE);
+        MoveWindow(m_hVolumeValueLabel, clientRectangle.right - margin - valueWidth, y, valueWidth, captionHeight, TRUE);
+        y += captionHeight + Scale(6);
+
+        MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
+
+        MoveWindow(m_hVersionLabel, margin, clientRectangle.bottom - margin - footerHeight, contentWidth, footerHeight, TRUE);
+    }
+
     bool DrawTrackbarPart(NMCUSTOMDRAW* customDraw) {
         if (customDraw->dwItemSpec == TBCD_CHANNEL) {
             DrawTrackbarChannel(customDraw->hdc);
@@ -192,27 +369,27 @@ private:
         RECT thumbRectangle = { 0, 0, 0, 0 };
         SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&thumbRectangle));
 
-        int trackLeft = 10;
-        int trackRight = clientRectangle.right - 10;
+        int trackLeft = Scale(10);
+        int trackRight = clientRectangle.right - Scale(10);
         int trackCenterY = (clientRectangle.bottom - clientRectangle.top) / 2;
-        int trackHalfHeight = kTrackChannelHeight / 2;
+        int trackHalfHeight = Scale(kTrackChannelHeight) / 2;
         RECT trackRectangle = { trackLeft, trackCenterY - trackHalfHeight, trackRight, trackCenterY + trackHalfHeight };
 
-        HBRUSH backgroundBrush = CreateSolidBrush(kTrackBackgroundColor);
-        HBRUSH accentBrush = CreateSolidBrush(kAccentColor);
-        HPEN backgroundPen = CreatePen(PS_SOLID, 1, kTrackBackgroundColor);
-        HPEN accentPen = CreatePen(PS_SOLID, 1, kAccentColor);
+        HBRUSH backgroundBrush = CreateSolidBrush(m_themeColors.trackColor);
+        HBRUSH accentBrush = CreateSolidBrush(m_themeColors.accentColor);
+        HPEN backgroundPen = CreatePen(PS_SOLID, 1, m_themeColors.trackColor);
+        HPEN accentPen = CreatePen(PS_SOLID, 1, m_themeColors.accentColor);
 
         HGDIOBJ previousBrush = SelectObject(deviceContext, backgroundBrush);
         HGDIOBJ previousPen = SelectObject(deviceContext, backgroundPen);
-        RoundRect(deviceContext, trackRectangle.left, trackRectangle.top, trackRectangle.right, trackRectangle.bottom, 6, 6);
+        RoundRect(deviceContext, trackRectangle.left, trackRectangle.top, trackRectangle.right, trackRectangle.bottom, Scale(8), Scale(8));
 
         int thumbCenterX = (thumbRectangle.left + thumbRectangle.right) / 2;
         if (thumbCenterX > trackRectangle.left) {
             RECT fillRectangle = { trackRectangle.left, trackRectangle.top, thumbCenterX, trackRectangle.bottom };
             SelectObject(deviceContext, accentBrush);
             SelectObject(deviceContext, accentPen);
-            RoundRect(deviceContext, fillRectangle.left, fillRectangle.top, fillRectangle.right, fillRectangle.bottom, 6, 6);
+            RoundRect(deviceContext, fillRectangle.left, fillRectangle.top, fillRectangle.right, fillRectangle.bottom, Scale(8), Scale(8));
         }
 
         SelectObject(deviceContext, previousBrush);
@@ -229,21 +406,22 @@ private:
 
         int thumbCenterX = (nativeThumbRectangle.left + nativeThumbRectangle.right) / 2;
         int thumbCenterY = (nativeThumbRectangle.top + nativeThumbRectangle.bottom) / 2;
-        int thumbRadius = kTrackThumbDiameter / 2;
+        int thumbRadius = Scale(kTrackThumbDiameter) / 2;
+        int innerInset = Scale(5);
         RECT outerThumbRectangle = { thumbCenterX - thumbRadius, thumbCenterY - thumbRadius, thumbCenterX + thumbRadius, thumbCenterY + thumbRadius };
-        RECT innerThumbRectangle = { outerThumbRectangle.left + 4, outerThumbRectangle.top + 4, outerThumbRectangle.right - 4, outerThumbRectangle.bottom - 4 };
+        RECT innerThumbRectangle = { outerThumbRectangle.left + innerInset, outerThumbRectangle.top + innerInset, outerThumbRectangle.right - innerInset, outerThumbRectangle.bottom - innerInset };
 
-        HBRUSH accentBrush = CreateSolidBrush(kAccentColor);
-        HBRUSH thumbBrush = CreateSolidBrush(kWindowBackgroundColor);
-        HPEN accentPen = CreatePen(PS_SOLID, 1, kAccentColor);
-        HPEN whitePen = CreatePen(PS_SOLID, 1, kWindowBackgroundColor);
+        HBRUSH accentBrush = CreateSolidBrush(m_themeColors.accentColor);
+        HBRUSH thumbBrush = CreateSolidBrush(m_themeColors.thumbFillColor);
+        HPEN accentPen = CreatePen(PS_SOLID, 1, m_themeColors.accentColor);
+        HPEN thumbPen = CreatePen(PS_SOLID, 1, m_themeColors.thumbFillColor);
 
         HGDIOBJ previousBrush = SelectObject(deviceContext, accentBrush);
         HGDIOBJ previousPen = SelectObject(deviceContext, accentPen);
         Ellipse(deviceContext, outerThumbRectangle.left, outerThumbRectangle.top, outerThumbRectangle.right, outerThumbRectangle.bottom);
 
         SelectObject(deviceContext, thumbBrush);
-        SelectObject(deviceContext, whitePen);
+        SelectObject(deviceContext, thumbPen);
         Ellipse(deviceContext, innerThumbRectangle.left, innerThumbRectangle.top, innerThumbRectangle.right, innerThumbRectangle.bottom);
 
         SelectObject(deviceContext, previousBrush);
@@ -251,12 +429,18 @@ private:
         DeleteObject(accentBrush);
         DeleteObject(thumbBrush);
         DeleteObject(accentPen);
-        DeleteObject(whitePen);
+        DeleteObject(thumbPen);
     }
 
-    LRESULT HandleControlColor(HDC deviceContext) {
+    LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
         SetBkMode(deviceContext, TRANSPARENT);
-        SetTextColor(deviceContext, kTextColor);
+
+        if (controlWindow == m_hDescriptionLabel || controlWindow == m_hVersionLabel) {
+            SetTextColor(deviceContext, m_themeColors.secondaryTextColor);
+        } else {
+            SetTextColor(deviceContext, m_themeColors.textColor);
+        }
+
         return reinterpret_cast<LRESULT>(m_hBackgroundBrush);
     }
 
@@ -264,12 +448,15 @@ private:
         INITCOMMONCONTROLSEX commonControls = { sizeof(INITCOMMONCONTROLSEX), ICC_BAR_CLASSES | ICC_STANDARD_CLASSES };
         InitCommonControlsEx(&commonControls);
 
-        UINT systemDpi = GetDpiForSystem();
+        m_dpi = GetDpiForSystem();
+        RefreshTheme();
+        RecreateFonts();
+
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = WindowProc;
         wc.hInstance = m_hInstance;
-        wc.hIcon = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXICON, systemDpi), GetSystemMetricForDpi(SM_CYICON, systemDpi), true);
-        wc.hIconSm = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXSMICON, systemDpi), GetSystemMetricForDpi(SM_CYSMICON, systemDpi), true);
+        wc.hIcon = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXICON, m_dpi), GetSystemMetricForDpi(SM_CYICON, m_dpi), true);
+        wc.hIconSm = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXSMICON, m_dpi), GetSystemMetricForDpi(SM_CYSMICON, m_dpi), true);
         wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
         wc.hbrBackground = m_hBackgroundBrush;
         wc.lpszClassName = L"MicGainControlMainWindow";
@@ -282,8 +469,8 @@ private:
 
         DWORD windowStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
         DWORD windowExStyle = WS_EX_APPWINDOW;
-        RECT windowRectangle = { 0, 0, kWindowClientWidth, kWindowClientHeight };
-        AdjustWindowRectEx(&windowRectangle, windowStyle, FALSE, windowExStyle);
+        RECT windowRectangle = { 0, 0, Scale(kBaseWindowClientWidth), Scale(kBaseWindowClientHeight) };
+        AdjustWindowRectExForDpi(&windowRectangle, windowStyle, FALSE, windowExStyle, m_dpi);
 
         int windowWidth = windowRectangle.right - windowRectangle.left;
         int windowHeight = windowRectangle.bottom - windowRectangle.top;
@@ -312,6 +499,7 @@ private:
         }
 
         UpdateWindowIcons();
+        RefreshTheme();
 
         ShowWindow(m_hWnd, SW_SHOWNORMAL);
         UpdateWindow(m_hWnd);
@@ -319,26 +507,23 @@ private:
     }
 
     void CreateChildControls(HWND hWnd) {
-        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Регулировка уровня громкости микрофона. Изменения применяются сразу.", WS_CHILD | WS_VISIBLE, 24, 20, 372, 36, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
+        m_hTitleLabel = CreateWindowExW(0, L"STATIC", L"Громкость микрофона", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTitleLabelId), m_hInstance, NULL);
+        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу и сохраняются в настройках приложения.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
+        m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
+        m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
+        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
-        m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 24, 70, 240, 22, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
-
-        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 24, 100, 372, 42, hWnd, ControlIdToMenuHandle(kVolumeTrackbarId), m_hInstance, NULL);
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
             SendMessageW(m_hTrackbar, TBM_SETPAGESIZE, 0, 10);
             SendMessageW(m_hTrackbar, TBM_SETLINESIZE, 0, 1);
-            SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, kTrackThumbDiameter, 0);
+            SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, Scale(kTrackThumbDiameter), 0);
         }
 
-        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 240, 154, 156, 20, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
-
-        HFONT dialogFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-        SendMessageW(m_hDescriptionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
-        SendMessageW(m_hVolumeValueLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
-        SendMessageW(m_hTrackbar, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
-        SendMessageW(m_hVersionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
-
+        ApplyFontsToControls();
+        ApplyThemeToControls();
+        LayoutControls();
         UpdateTrackbarFromConfig();
     }
 
@@ -353,7 +538,7 @@ private:
     }
 
     void UpdateTrackbarFromConfig() {
-        int trackbarPosition = VolumeToTrackbarPosition(m_configManager.GetConfig().microphoneVolume);
+        int trackbarPosition = VolumeToPercent(m_configManager.GetConfig().microphoneVolume);
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETPOS, TRUE, trackbarPosition);
         }
@@ -361,8 +546,7 @@ private:
     }
 
     void UpdateVolumeLabel(int volumePercent) {
-        float volume = static_cast<float>(volumePercent) / 100.0f;
-        std::wstring labelText = MakeVolumeLabelText(volume);
+        std::wstring labelText = MakeVolumePercentText(volumePercent);
         SetWindowTextW(m_hVolumeValueLabel, labelText.c_str());
     }
 
@@ -371,14 +555,7 @@ private:
             return;
         }
 
-        int volumePercent = static_cast<int>(SendMessageW(m_hTrackbar, TBM_GETPOS, 0, 0));
-        if (volumePercent < 0) {
-            volumePercent = 0;
-        }
-        if (volumePercent > 100) {
-            volumePercent = 100;
-        }
-
+        int volumePercent = ClampPercent(static_cast<int>(SendMessageW(m_hTrackbar, TBM_GETPOS, 0, 0)));
         float volume = static_cast<float>(volumePercent) / 100.0f;
         m_configManager.SetMicrophoneVolume(volume);
         m_audioManager.ApplyVolumeImmediately(volume);
@@ -394,11 +571,44 @@ private:
         SetForegroundWindow(m_hWnd);
     }
 
+    void HandleDpiChanged(WPARAM wParam, LPARAM lParam) {
+        m_dpi = HIWORD(wParam);
+        RECT* suggestedRectangle = reinterpret_cast<RECT*>(lParam);
+        SetWindowPos(
+            m_hWnd,
+            NULL,
+            suggestedRectangle->left,
+            suggestedRectangle->top,
+            suggestedRectangle->right - suggestedRectangle->left,
+            suggestedRectangle->bottom - suggestedRectangle->top,
+            SWP_NOZORDER | SWP_NOACTIVATE
+        );
+
+        UpdateWindowIcons();
+        RecreateFonts();
+        if (m_hTrackbar) {
+            SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, Scale(kTrackThumbDiameter), 0);
+        }
+        LayoutControls();
+        InvalidateRect(m_hWnd, nullptr, TRUE);
+    }
+
+    void HandleGetMinMaxInfo(LPARAM lParam) {
+        MINMAXINFO* minMaxInfo = reinterpret_cast<MINMAXINFO*>(lParam);
+        DWORD windowStyle = static_cast<DWORD>(GetWindowLongPtrW(m_hWnd, GWL_STYLE));
+        DWORD windowExStyle = static_cast<DWORD>(GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE));
+        RECT minimumRectangle = { 0, 0, Scale(kMinimumWindowClientWidth), Scale(kMinimumWindowClientHeight) };
+        AdjustWindowRectExForDpi(&minimumRectangle, windowStyle, FALSE, windowExStyle, m_dpi);
+        minMaxInfo->ptMinTrackSize.x = minimumRectangle.right - minimumRectangle.left;
+        minMaxInfo->ptMinTrackSize.y = minimumRectangle.bottom - minimumRectangle.top;
+    }
+
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         Application* app = nullptr;
         if (uMsg == WM_NCCREATE) {
             CREATESTRUCT* cs = reinterpret_cast<CREATESTRUCT*>(lParam);
             app = reinterpret_cast<Application*>(cs->lpCreateParams);
+            app->m_hWnd = hWnd;
             SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
         } else {
             app = reinterpret_cast<Application*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
@@ -415,6 +625,12 @@ private:
                 } else if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
                     app->ShowMainWindow();
                 }
+                return 0;
+            case WM_SIZE:
+                app->LayoutControls();
+                return 0;
+            case WM_GETMINMAXINFO:
+                app->HandleGetMinMaxInfo(lParam);
                 return 0;
             case WM_HSCROLL:
                 if (reinterpret_cast<HWND>(lParam) == app->m_hTrackbar) {
@@ -435,10 +651,19 @@ private:
                 }
                 break;
             case WM_CTLCOLORSTATIC:
-                return app->HandleControlColor(reinterpret_cast<HDC>(wParam));
+                return app->HandleControlColor(reinterpret_cast<HWND>(lParam), reinterpret_cast<HDC>(wParam));
             case WM_DPICHANGED:
-                app->UpdateWindowIcons();
+                app->HandleDpiChanged(wParam, lParam);
+                return 0;
+            case WM_SETTINGCHANGE:
+                if (lParam && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0) {
+                    app->RefreshTheme();
+                    return 0;
+                }
                 break;
+            case WM_THEMECHANGED:
+                app->RefreshTheme();
+                return 0;
             case WM_ERASEBKGND:
                 {
                     RECT clientRectangle = { 0, 0, 0, 0 };
@@ -468,14 +693,22 @@ private:
     }
 
     HINSTANCE m_hInstance = NULL;
+    UINT m_dpi = USER_DEFAULT_SCREEN_DPI;
+    ThemeColors m_themeColors = GetThemeColors(false);
     HBRUSH m_hBackgroundBrush = NULL;
+    HFONT m_hTitleFont = NULL;
+    HFONT m_hTextFont = NULL;
+    HFONT m_hSecondaryFont = NULL;
     HWND m_hWnd = NULL;
+    HWND m_hTitleLabel = NULL;
     HWND m_hDescriptionLabel = NULL;
+    HWND m_hVolumeCaptionLabel = NULL;
     HWND m_hVolumeValueLabel = NULL;
     HWND m_hTrackbar = NULL;
     HWND m_hVersionLabel = NULL;
     HICON m_hSmallIcon = NULL;
     HICON m_hBigIcon = NULL;
+    bool m_darkModeEnabled = false;
     bool m_allowExit = false;
     ConfigManager m_configManager;
     AudioManager m_audioManager;
