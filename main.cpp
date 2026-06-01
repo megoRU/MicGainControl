@@ -2,6 +2,7 @@
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <gdiplus.h>
 #include "ConfigManager.hpp"
 #include "AudioManager.hpp"
 #include "TrayManager.hpp"
@@ -40,8 +41,8 @@ constexpr int kDescriptionLabelId = 1004;
 constexpr int kVolumeCaptionLabelId = 1005;
 constexpr int kVolumeValueLabelId = 1006;
 constexpr int kVersionLabelId = 1007;
-constexpr int kTrackThumbDiameter = 22;
-constexpr int kTrackChannelHeight = 6;
+constexpr int kTrackThumbDiameter = 26;
+constexpr int kTrackChannelHeight = 14;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
 
 struct ThemeColors {
@@ -51,6 +52,14 @@ struct ThemeColors {
     COLORREF trackColor;
     COLORREF accentColor;
     COLORREF thumbFillColor;
+    COLORREF thumbBorderColor;
+};
+
+struct TrackbarGeometry {
+    Gdiplus::RectF trackRectangle;
+    float thumbCenterX;
+    float thumbCenterY;
+    float thumbDiameter;
 };
 
 int ClampPercent(int value) {
@@ -73,6 +82,35 @@ std::wstring MakeVolumePercentText(int volumePercent) {
 
 HMENU ControlIdToMenuHandle(int controlId) {
     return reinterpret_cast<HMENU>(static_cast<INT_PTR>(controlId));
+}
+
+Gdiplus::Color ToGdiplusColor(COLORREF color) {
+    return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
+}
+
+void AddCapsulePath(Gdiplus::GraphicsPath& path, const Gdiplus::RectF& rectangle) {
+    if (rectangle.Width <= 0.0f || rectangle.Height <= 0.0f) {
+        return;
+    }
+
+    if (rectangle.Width <= rectangle.Height) {
+        path.AddEllipse(rectangle);
+        path.CloseFigure();
+        return;
+    }
+
+    float diameter = rectangle.Height;
+    float radius = diameter / 2.0f;
+    float left = rectangle.X;
+    float top = rectangle.Y;
+    float right = rectangle.X + rectangle.Width;
+    float bottom = rectangle.Y + rectangle.Height;
+
+    path.AddArc(left, top, diameter, diameter, 90.0f, 180.0f);
+    path.AddLine(left + radius, top, right - radius, top);
+    path.AddArc(right - diameter, top, diameter, diameter, 270.0f, 180.0f);
+    path.AddLine(right - radius, bottom, left + radius, bottom);
+    path.CloseFigure();
 }
 
 bool IsWindowsDarkThemeEnabled() {
@@ -268,7 +306,8 @@ private:
                 RGB(200, 200, 200),
                 RGB(72, 72, 72),
                 RGB(96, 205, 255),
-                RGB(32, 32, 32)
+                RGB(96, 205, 255),
+                RGB(245, 245, 245)
             };
         }
 
@@ -278,7 +317,8 @@ private:
             RGB(96, 96, 96),
             RGB(214, 218, 224),
             RGB(0, 120, 215),
-            RGB(249, 249, 249)
+            RGB(0, 120, 215),
+            RGB(255, 255, 255)
         };
     }
 
@@ -389,74 +429,96 @@ private:
         return false;
     }
 
-    void DrawTrackbarChannel(HDC deviceContext) {
+    TrackbarGeometry GetTrackbarGeometry() const {
         RECT clientRectangle = { 0, 0, 0, 0 };
         GetClientRect(m_hTrackbar, &clientRectangle);
 
-        RECT thumbRectangle = { 0, 0, 0, 0 };
-        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&thumbRectangle));
-
-        int trackLeft = Scale(10);
-        int trackRight = clientRectangle.right - Scale(10);
-        int trackCenterY = (clientRectangle.bottom - clientRectangle.top) / 2;
-        int trackHalfHeight = Scale(kTrackChannelHeight) / 2;
-        RECT trackRectangle = { trackLeft, trackCenterY - trackHalfHeight, trackRight, trackCenterY + trackHalfHeight };
-
-        HBRUSH backgroundBrush = CreateSolidBrush(m_themeColors.trackColor);
-        HBRUSH accentBrush = CreateSolidBrush(m_themeColors.accentColor);
-        HPEN backgroundPen = CreatePen(PS_SOLID, 1, m_themeColors.trackColor);
-        HPEN accentPen = CreatePen(PS_SOLID, 1, m_themeColors.accentColor);
-
-        HGDIOBJ previousBrush = SelectObject(deviceContext, backgroundBrush);
-        HGDIOBJ previousPen = SelectObject(deviceContext, backgroundPen);
-        RoundRect(deviceContext, trackRectangle.left, trackRectangle.top, trackRectangle.right, trackRectangle.bottom, Scale(8), Scale(8));
-
-        int thumbCenterX = (thumbRectangle.left + thumbRectangle.right) / 2;
-        if (thumbCenterX > trackRectangle.left) {
-            RECT fillRectangle = { trackRectangle.left, trackRectangle.top, thumbCenterX, trackRectangle.bottom };
-            SelectObject(deviceContext, accentBrush);
-            SelectObject(deviceContext, accentPen);
-            RoundRect(deviceContext, fillRectangle.left, fillRectangle.top, fillRectangle.right, fillRectangle.bottom, Scale(8), Scale(8));
+        float clientWidth = static_cast<float>(clientRectangle.right - clientRectangle.left);
+        float clientHeight = static_cast<float>(clientRectangle.bottom - clientRectangle.top);
+        float trackHeight = static_cast<float>(Scale(kTrackChannelHeight));
+        if (trackHeight < 2.0f) {
+            trackHeight = 2.0f;
         }
 
-        SelectObject(deviceContext, previousBrush);
-        SelectObject(deviceContext, previousPen);
-        DeleteObject(backgroundBrush);
-        DeleteObject(accentBrush);
-        DeleteObject(backgroundPen);
-        DeleteObject(accentPen);
+        float thumbDiameter = static_cast<float>(Scale(kTrackThumbDiameter));
+        float minimumThumbDiameter = trackHeight * 1.5f;
+        float maximumThumbDiameter = trackHeight * 2.0f;
+        if (thumbDiameter < minimumThumbDiameter) {
+            thumbDiameter = minimumThumbDiameter;
+        }
+        if (thumbDiameter > maximumThumbDiameter) {
+            thumbDiameter = maximumThumbDiameter;
+        }
+
+        float trackLeft = thumbDiameter / 2.0f;
+        float trackRight = clientWidth - (thumbDiameter / 2.0f);
+        if (trackRight < trackLeft) {
+            trackRight = trackLeft;
+        }
+
+        float trackCenterY = clientHeight / 2.0f;
+        float trackTop = trackCenterY - (trackHeight / 2.0f);
+        int volumePercent = ClampPercent(static_cast<int>(SendMessageW(m_hTrackbar, TBM_GETPOS, 0, 0)));
+        float volumeRatio = static_cast<float>(volumePercent) / 100.0f;
+        float trackWidth = trackRight - trackLeft;
+        float thumbCenterX = trackLeft + (trackWidth * volumeRatio);
+
+        return TrackbarGeometry{
+            Gdiplus::RectF(trackLeft, trackTop, trackWidth, trackHeight),
+            thumbCenterX,
+            trackCenterY,
+            thumbDiameter
+        };
+    }
+
+    void ConfigureHighQualityGraphics(Gdiplus::Graphics& graphics) const {
+        graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+        graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+        graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+    }
+
+    void DrawTrackbarChannel(HDC deviceContext) {
+        Gdiplus::Graphics graphics(deviceContext);
+        ConfigureHighQualityGraphics(graphics);
+
+        TrackbarGeometry geometry = GetTrackbarGeometry();
+        Gdiplus::GraphicsPath inactivePath;
+        AddCapsulePath(inactivePath, geometry.trackRectangle);
+
+        Gdiplus::SolidBrush inactiveBrush(ToGdiplusColor(m_themeColors.trackColor));
+        graphics.FillPath(&inactiveBrush, &inactivePath);
+
+        float activeWidth = geometry.thumbCenterX - geometry.trackRectangle.X;
+        if (activeWidth > 0.0f) {
+            Gdiplus::RectF activeRectangle(geometry.trackRectangle.X, geometry.trackRectangle.Y, activeWidth, geometry.trackRectangle.Height);
+            Gdiplus::GraphicsPath activePath;
+            AddCapsulePath(activePath, activeRectangle);
+            Gdiplus::SolidBrush activeBrush(ToGdiplusColor(m_themeColors.accentColor));
+            graphics.FillPath(&activeBrush, &activePath);
+        }
     }
 
     void DrawTrackbarThumb(HDC deviceContext) {
-        RECT nativeThumbRectangle = { 0, 0, 0, 0 };
-        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&nativeThumbRectangle));
+        Gdiplus::Graphics graphics(deviceContext);
+        ConfigureHighQualityGraphics(graphics);
 
-        int thumbCenterX = (nativeThumbRectangle.left + nativeThumbRectangle.right) / 2;
-        int thumbCenterY = (nativeThumbRectangle.top + nativeThumbRectangle.bottom) / 2;
-        int thumbRadius = Scale(kTrackThumbDiameter) / 2;
-        int innerInset = Scale(5);
-        RECT outerThumbRectangle = { thumbCenterX - thumbRadius, thumbCenterY - thumbRadius, thumbCenterX + thumbRadius, thumbCenterY + thumbRadius };
-        RECT innerThumbRectangle = { outerThumbRectangle.left + innerInset, outerThumbRectangle.top + innerInset, outerThumbRectangle.right - innerInset, outerThumbRectangle.bottom - innerInset };
+        TrackbarGeometry geometry = GetTrackbarGeometry();
+        float borderWidth = static_cast<float>(Scale(3));
+        if (borderWidth < 2.0f) {
+            borderWidth = 2.0f;
+        }
 
-        HBRUSH accentBrush = CreateSolidBrush(m_themeColors.accentColor);
-        HBRUSH thumbBrush = CreateSolidBrush(m_themeColors.thumbFillColor);
-        HPEN accentPen = CreatePen(PS_SOLID, 1, m_themeColors.accentColor);
-        HPEN thumbPen = CreatePen(PS_SOLID, 1, m_themeColors.thumbFillColor);
+        float thumbLeft = geometry.thumbCenterX - (geometry.thumbDiameter / 2.0f);
+        float thumbTop = geometry.thumbCenterY - (geometry.thumbDiameter / 2.0f);
+        Gdiplus::RectF thumbRectangle(thumbLeft, thumbTop, geometry.thumbDiameter, geometry.thumbDiameter);
 
-        HGDIOBJ previousBrush = SelectObject(deviceContext, accentBrush);
-        HGDIOBJ previousPen = SelectObject(deviceContext, accentPen);
-        Ellipse(deviceContext, outerThumbRectangle.left, outerThumbRectangle.top, outerThumbRectangle.right, outerThumbRectangle.bottom);
+        Gdiplus::SolidBrush thumbBrush(ToGdiplusColor(m_themeColors.thumbFillColor));
+        Gdiplus::Pen borderPen(ToGdiplusColor(m_themeColors.thumbBorderColor), borderWidth);
+        borderPen.SetAlignment(Gdiplus::PenAlignmentInset);
 
-        SelectObject(deviceContext, thumbBrush);
-        SelectObject(deviceContext, thumbPen);
-        Ellipse(deviceContext, innerThumbRectangle.left, innerThumbRectangle.top, innerThumbRectangle.right, innerThumbRectangle.bottom);
-
-        SelectObject(deviceContext, previousBrush);
-        SelectObject(deviceContext, previousPen);
-        DeleteObject(accentBrush);
-        DeleteObject(thumbBrush);
-        DeleteObject(accentPen);
-        DeleteObject(thumbPen);
+        graphics.FillEllipse(&thumbBrush, thumbRectangle);
+        graphics.DrawEllipse(&borderPen, thumbRectangle);
     }
 
     LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
@@ -569,6 +631,7 @@ private:
         int trackbarPosition = VolumeToPercent(m_configManager.GetConfig().microphoneVolume);
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETPOS, TRUE, trackbarPosition);
+            InvalidateRect(m_hTrackbar, nullptr, TRUE);
         }
         UpdateVolumeLabel(trackbarPosition);
     }
@@ -804,6 +867,15 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
         return 0;
     }
 
+    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+    ULONG_PTR gdiplusToken = 0;
+    if (Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr) != Gdiplus::Ok) {
+        CoUninitialize();
+        ReleaseMutex(hMutex);
+        CloseHandle(hMutex);
+        return 0;
+    }
+
     RegisterAutostart();
 
     {
@@ -813,6 +885,7 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
         }
     }
 
+    Gdiplus::GdiplusShutdown(gdiplusToken);
     CoUninitialize();
     ReleaseMutex(hMutex);
     CloseHandle(hMutex);

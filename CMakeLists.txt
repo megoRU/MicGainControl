@@ -47,4 +47,5 @@ target_link_libraries(MicGainControl PRIVATE
     Comctl32
     Dwmapi
     UxTheme
+    Gdiplus
 )
