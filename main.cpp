@@ -44,6 +44,7 @@ constexpr int kVolumeCaptionLabelId = 1005;
 constexpr int kVolumeValueLabelId = 1006;
 constexpr int kVersionLabelId = 1007;
 constexpr int kGithubLinkId = 1008;
+constexpr int kEnabledToggleId = 1009;
 constexpr int kTrackThumbDiameter = 26;
 constexpr int kTrackChannelHeight = 14;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
@@ -362,6 +363,9 @@ private:
         if (m_hTrackbar) {
             InvalidateRect(m_hTrackbar, nullptr, FALSE);
         }
+        if (m_hEnabledToggle) {
+            InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
+        }
     }
 
     void LayoutControls() {
@@ -375,6 +379,7 @@ private:
         int margin = Scale(kContentMargin);
         int contentWidth = clientRectangle.right - clientRectangle.left - (margin * 2);
         int titleHeight = Scale(24);
+        int toggleWidth = Scale(132);
         int descriptionHeight = Scale(34);
         int captionHeight = Scale(22);
         int valueWidth = Scale(72);
@@ -383,7 +388,8 @@ private:
         int linkWidth = Scale(160);
         int y = margin;
 
-        MoveWindow(m_hTitleLabel, margin, y, contentWidth, titleHeight, TRUE);
+        MoveWindow(m_hTitleLabel, margin, y, contentWidth - toggleWidth - Scale(12), titleHeight, TRUE);
+        MoveWindow(m_hEnabledToggle, clientRectangle.right - margin - toggleWidth, y - Scale(2), toggleWidth, Scale(30), TRUE);
         y += titleHeight + Scale(4);
 
         MoveWindow(m_hDescriptionLabel, margin, y, contentWidth, descriptionHeight, TRUE);
@@ -590,6 +596,50 @@ private:
         graphics.DrawEllipse(&borderPen, outerThumbRectangle);
     }
 
+    void DrawEnabledToggle(const DRAWITEMSTRUCT* drawItem) {
+        bool enabled = SendMessageW(drawItem->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        RECT itemRectangle = drawItem->rcItem;
+        FillRect(drawItem->hDC, &itemRectangle, m_hBackgroundBrush);
+
+        HFONT previousFont = nullptr;
+        if (m_hTextFont) {
+            previousFont = reinterpret_cast<HFONT>(SelectObject(drawItem->hDC, m_hTextFont));
+        }
+
+        SetBkMode(drawItem->hDC, TRANSPARENT);
+        SetTextColor(drawItem->hDC, m_themeColors.secondaryTextColor);
+
+        RECT textRectangle = itemRectangle;
+        textRectangle.right -= Scale(54);
+        DrawTextW(drawItem->hDC, enabled ? L"Вкл" : L"Выкл", -1, &textRectangle, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        if (previousFont) {
+            SelectObject(drawItem->hDC, previousFont);
+        }
+
+        Gdiplus::Graphics graphics(drawItem->hDC);
+        ConfigureHighQualityGraphics(graphics);
+
+        float switchHeight = static_cast<float>(Scale(22));
+        float switchWidth = static_cast<float>(Scale(44));
+        float switchX = static_cast<float>(itemRectangle.right) - switchWidth;
+        float switchY = static_cast<float>(itemRectangle.top + ((itemRectangle.bottom - itemRectangle.top) / 2)) - (switchHeight / 2.0f);
+        Gdiplus::RectF switchRectangle(switchX, switchY, switchWidth, switchHeight);
+
+        Gdiplus::GraphicsPath switchPath;
+        AddCapsulePath(switchPath, switchRectangle);
+        Gdiplus::SolidBrush switchBrush(ToGdiplusColor(enabled ? m_themeColors.accentColor : m_themeColors.trackColor));
+        graphics.FillPath(&switchBrush, &switchPath);
+
+        float knobInset = static_cast<float>(Scale(3));
+        float knobDiameter = switchHeight - (knobInset * 2.0f);
+        float knobX = enabled ? (switchX + switchWidth - knobInset - knobDiameter) : (switchX + knobInset);
+        float knobY = switchY + knobInset;
+        Gdiplus::RectF knobRectangle(knobX, knobY, knobDiameter, knobDiameter);
+        Gdiplus::SolidBrush knobBrush(ToGdiplusColor(m_themeColors.thumbBorderColor));
+        graphics.FillEllipse(&knobBrush, knobRectangle);
+    }
+
     LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
         SetBkMode(deviceContext, TRANSPARENT);
 
@@ -671,6 +721,7 @@ private:
         m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу и сохраняются в настройках приложения.", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
         m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
+        m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
         m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
         m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
@@ -706,6 +757,28 @@ private:
             InvalidateRect(m_hTrackbar, nullptr, FALSE);
         }
         UpdateVolumeLabel(trackbarPosition);
+        UpdateEnabledToggleFromConfig();
+    }
+
+    void UpdateEnabledToggleFromConfig() {
+        if (!m_hEnabledToggle) {
+            return;
+        }
+
+        SendMessageW(m_hEnabledToggle, BM_SETCHECK, m_configManager.GetConfig().enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
+    }
+
+    void HandleEnabledToggleClicked() {
+        if (!m_hEnabledToggle) {
+            return;
+        }
+
+        bool enabled = SendMessageW(m_hEnabledToggle, BM_GETCHECK, 0, 0) != BST_CHECKED;
+        SendMessageW(m_hEnabledToggle, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+        m_configManager.SetEnabled(enabled);
+        ApplyConfig(m_configManager.GetConfig(), false);
+        InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
     }
 
     void UpdateVolumeLabel(int volumePercent) {
@@ -852,6 +925,10 @@ private:
                 }
                 break;
             case WM_COMMAND:
+                if (LOWORD(wParam) == kEnabledToggleId && HIWORD(wParam) == BN_CLICKED) {
+                    app->HandleEnabledToggleClicked();
+                    return 0;
+                }
                 if (LOWORD(wParam) == kGithubLinkId && HIWORD(wParam) == STN_CLICKED) {
                     ShellExecuteW(hWnd, L"open", kGithubReleasesUrl, NULL, NULL, SW_SHOWNORMAL);
                     return 0;
@@ -873,6 +950,12 @@ private:
                     if (customDraw->dwDrawStage == CDDS_ITEMPREPAINT && app->DrawTrackbarPart(customDraw)) {
                         return CDRF_SKIPDEFAULT;
                     }
+                }
+                break;
+            case WM_DRAWITEM:
+                if (wParam == kEnabledToggleId) {
+                    app->DrawEnabledToggle(reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
+                    return TRUE;
                 }
                 break;
             case WM_CTLCOLORSTATIC:
@@ -935,6 +1018,7 @@ private:
     HWND m_hDescriptionLabel = NULL;
     HWND m_hVolumeCaptionLabel = NULL;
     HWND m_hVolumeValueLabel = NULL;
+    HWND m_hEnabledToggle = NULL;
     HWND m_hTrackbar = NULL;
     HWND m_hVersionLabel = NULL;
     HWND m_hGithubLink = NULL;
