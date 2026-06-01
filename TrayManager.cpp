@@ -30,7 +30,7 @@ bool TrayManager::CreateTrayIcon(HWND hWnd) {
         return false;
     }
 
-    wcscpy_s(m_nid.szTip, L"MicGainControl - Microphone Volume Enforcer");
+    wcscpy_s(m_nid.szTip, L"MicGainControl — контроль громкости микрофона");
 
     return Shell_NotifyIconW(NIM_ADD, &m_nid) == TRUE;
 }
@@ -42,10 +42,10 @@ void TrayManager::SetEnabledState(bool enabled) {
 void TrayManager::ShowContextMenu(HWND hWnd) {
     HMENU hMenu = CreatePopupMenu();
     if (hMenu) {
-        AppendMenuW(hMenu, MF_STRING | (m_enabled ? MF_CHECKED : 0), 1, L"Enabled");
-        AppendMenuW(hMenu, MF_STRING, 2, L"Open Window");
+        AppendMenuW(hMenu, MF_STRING | (m_enabled ? MF_CHECKED : 0), 1, L"Включено");
+        AppendMenuW(hMenu, MF_STRING, 2, L"Открыть окно");
         AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenuW(hMenu, MF_STRING, 3, L"Exit");
+        AppendMenuW(hMenu, MF_STRING, 3, L"Выход");
 
         POINT pt;
         GetCursorPos(&pt);

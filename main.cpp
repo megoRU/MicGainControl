@@ -6,13 +6,33 @@
 #include "resource.h"
 #include <string>
 
+#ifndef TBS_TRANSPARENTBKGND
+#define TBS_TRANSPARENTBKGND 0x1000
+#endif
+
+#ifndef TBCD_TICS
+#define TBCD_TICS 0x0001
+#endif
+
+#ifndef TBCD_THUMB
+#define TBCD_THUMB 0x0002
+#endif
+
+#ifndef TBCD_CHANNEL
+#define TBCD_CHANNEL 0x0003
+#endif
+
 namespace {
 constexpr int kWindowClientWidth = 420;
-constexpr int kWindowClientHeight = 180;
-constexpr int kIconControlId = 1001;
+constexpr int kWindowClientHeight = 190;
 constexpr int kVolumeTrackbarId = 1002;
 constexpr int kVolumeValueLabelId = 1003;
 constexpr int kDescriptionLabelId = 1004;
+constexpr int kVersionLabelId = 1005;
+constexpr COLORREF kAccentColor = RGB(0, 120, 215);
+constexpr COLORREF kTrackBackgroundColor = RGB(225, 229, 235);
+constexpr COLORREF kWindowBackgroundColor = RGB(255, 255, 255);
+constexpr COLORREF kTextColor = RGB(32, 32, 32);
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
 
 std::wstring MakeVolumeLabelText(float volume) {
@@ -24,16 +44,11 @@ std::wstring MakeVolumeLabelText(float volume) {
         volumePercent = 100;
     }
 
-    return L"Microphone volume: " + std::to_wstring(volumePercent) + L"%";
+    return L"Громкость микрофона: " + std::to_wstring(volumePercent) + L"%";
 }
-
 
 HMENU ControlIdToMenuHandle(int controlId) {
     return reinterpret_cast<HMENU>(static_cast<INT_PTR>(controlId));
-}
-
-HBRUSH SystemColorToBrush(int systemColor) {
-    return reinterpret_cast<HBRUSH>(static_cast<INT_PTR>(systemColor + 1));
 }
 
 int VolumeToTrackbarPosition(float volume) {
@@ -51,7 +66,15 @@ int VolumeToTrackbarPosition(float volume) {
 
 class Application {
 public:
-    Application(HINSTANCE hInstance) : m_hInstance(hInstance), m_trayManager(hInstance) {}
+    Application(HINSTANCE hInstance) : m_hInstance(hInstance), m_hBackgroundBrush(CreateSolidBrush(kWindowBackgroundColor)), m_trayManager(hInstance) {}
+
+    ~Application() {
+        DestroyWindowIcons();
+        if (m_hBackgroundBrush) {
+            DeleteObject(m_hBackgroundBrush);
+            m_hBackgroundBrush = NULL;
+        }
+    }
 
     bool Initialize() {
         if (!m_configManager.Load()) return false;
@@ -95,17 +118,144 @@ public:
     }
 
 private:
+    int GetSystemMetricForDpi(int metric, UINT dpi) const {
+        return GetSystemMetricsForDpi(metric, dpi);
+    }
+
+    HICON LoadApplicationIcon(int width, int height, bool useSharedHandle) const {
+        UINT loadFlags = LR_DEFAULTCOLOR;
+        if (useSharedHandle) {
+            loadFlags = loadFlags | LR_SHARED;
+        }
+
+        return static_cast<HICON>(LoadImageW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, width, height, loadFlags));
+    }
+
+    void DestroyWindowIcons() {
+        if (m_hSmallIcon) {
+            DestroyIcon(m_hSmallIcon);
+            m_hSmallIcon = NULL;
+        }
+
+        if (m_hBigIcon) {
+            DestroyIcon(m_hBigIcon);
+            m_hBigIcon = NULL;
+        }
+    }
+
+    void UpdateWindowIcons() {
+        DestroyWindowIcons();
+
+        UINT windowDpi = GetDpiForWindow(m_hWnd);
+        int smallIconWidth = GetSystemMetricForDpi(SM_CXSMICON, windowDpi);
+        int smallIconHeight = GetSystemMetricForDpi(SM_CYSMICON, windowDpi);
+        int bigIconWidth = GetSystemMetricForDpi(SM_CXICON, windowDpi);
+        int bigIconHeight = GetSystemMetricForDpi(SM_CYICON, windowDpi);
+
+        m_hSmallIcon = LoadApplicationIcon(smallIconWidth, smallIconHeight, false);
+        m_hBigIcon = LoadApplicationIcon(bigIconWidth, bigIconHeight, false);
+
+        if (m_hSmallIcon) {
+            SendMessageW(m_hWnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(m_hSmallIcon));
+            SendMessageW(m_hWnd, WM_SETICON, ICON_SMALL2, reinterpret_cast<LPARAM>(m_hSmallIcon));
+        }
+
+        if (m_hBigIcon) {
+            SendMessageW(m_hWnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(m_hBigIcon));
+        }
+    }
+
+    bool DrawTrackbarPart(NMCUSTOMDRAW* customDraw) {
+        if (customDraw->dwItemSpec == TBCD_CHANNEL) {
+            DrawTrackbarChannel(customDraw->hdc);
+            return true;
+        }
+
+        if (customDraw->dwItemSpec == TBCD_THUMB) {
+            DrawTrackbarThumb(customDraw->hdc);
+            return true;
+        }
+
+        if (customDraw->dwItemSpec == TBCD_TICS) {
+            return true;
+        }
+
+        return false;
+    }
+
+    void DrawTrackbarChannel(HDC deviceContext) {
+        RECT clientRectangle = { 0, 0, 0, 0 };
+        GetClientRect(m_hTrackbar, &clientRectangle);
+
+        RECT thumbRectangle = { 0, 0, 0, 0 };
+        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&thumbRectangle));
+
+        int trackLeft = 10;
+        int trackRight = clientRectangle.right - 10;
+        int trackCenterY = (clientRectangle.bottom - clientRectangle.top) / 2;
+        RECT trackRectangle = { trackLeft, trackCenterY - 3, trackRight, trackCenterY + 3 };
+
+        HBRUSH backgroundBrush = CreateSolidBrush(kTrackBackgroundColor);
+        HBRUSH accentBrush = CreateSolidBrush(kAccentColor);
+        HPEN backgroundPen = CreatePen(PS_SOLID, 1, kTrackBackgroundColor);
+        HPEN accentPen = CreatePen(PS_SOLID, 1, kAccentColor);
+
+        HGDIOBJ previousBrush = SelectObject(deviceContext, backgroundBrush);
+        HGDIOBJ previousPen = SelectObject(deviceContext, backgroundPen);
+        RoundRect(deviceContext, trackRectangle.left, trackRectangle.top, trackRectangle.right, trackRectangle.bottom, 6, 6);
+
+        int thumbCenterX = (thumbRectangle.left + thumbRectangle.right) / 2;
+        if (thumbCenterX > trackRectangle.left) {
+            RECT fillRectangle = { trackRectangle.left, trackRectangle.top, thumbCenterX, trackRectangle.bottom };
+            SelectObject(deviceContext, accentBrush);
+            SelectObject(deviceContext, accentPen);
+            RoundRect(deviceContext, fillRectangle.left, fillRectangle.top, fillRectangle.right, fillRectangle.bottom, 6, 6);
+        }
+
+        SelectObject(deviceContext, previousBrush);
+        SelectObject(deviceContext, previousPen);
+        DeleteObject(backgroundBrush);
+        DeleteObject(accentBrush);
+        DeleteObject(backgroundPen);
+        DeleteObject(accentPen);
+    }
+
+    void DrawTrackbarThumb(HDC deviceContext) {
+        RECT thumbRectangle = { 0, 0, 0, 0 };
+        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&thumbRectangle));
+        InflateRect(&thumbRectangle, 1, 1);
+
+        HBRUSH thumbBrush = CreateSolidBrush(kWindowBackgroundColor);
+        HPEN thumbPen = CreatePen(PS_SOLID, 2, kAccentColor);
+
+        HGDIOBJ previousBrush = SelectObject(deviceContext, thumbBrush);
+        HGDIOBJ previousPen = SelectObject(deviceContext, thumbPen);
+        RoundRect(deviceContext, thumbRectangle.left, thumbRectangle.top, thumbRectangle.right, thumbRectangle.bottom, 8, 8);
+
+        SelectObject(deviceContext, previousBrush);
+        SelectObject(deviceContext, previousPen);
+        DeleteObject(thumbBrush);
+        DeleteObject(thumbPen);
+    }
+
+    LRESULT HandleControlColor(HDC deviceContext) {
+        SetBkMode(deviceContext, TRANSPARENT);
+        SetTextColor(deviceContext, kTextColor);
+        return reinterpret_cast<LRESULT>(m_hBackgroundBrush);
+    }
+
     bool CreateMainWindow() {
         INITCOMMONCONTROLSEX commonControls = { sizeof(INITCOMMONCONTROLSEX), ICC_BAR_CLASSES | ICC_STANDARD_CLASSES };
         InitCommonControlsEx(&commonControls);
 
+        UINT systemDpi = GetDpiForSystem();
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = WindowProc;
         wc.hInstance = m_hInstance;
-        wc.hIcon = LoadIconW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON));
-        wc.hIconSm = static_cast<HICON>(LoadImageW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR));
+        wc.hIcon = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXICON, systemDpi), GetSystemMetricForDpi(SM_CYICON, systemDpi), true);
+        wc.hIconSm = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXSMICON, systemDpi), GetSystemMetricForDpi(SM_CYSMICON, systemDpi), true);
         wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
-        wc.hbrBackground = SystemColorToBrush(COLOR_WINDOW);
+        wc.hbrBackground = m_hBackgroundBrush;
         wc.lpszClassName = L"MicGainControlMainWindow";
 
         if (!RegisterClassExW(&wc)) {
@@ -145,34 +295,32 @@ private:
             return false;
         }
 
+        UpdateWindowIcons();
+
         ShowWindow(m_hWnd, SW_SHOWNORMAL);
         UpdateWindow(m_hWnd);
         return true;
     }
 
     void CreateChildControls(HWND hWnd) {
-        m_hLogoIcon = static_cast<HICON>(LoadImageW(m_hInstance, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
-        m_hIconControl = CreateWindowExW(0, L"STATIC", NULL, WS_CHILD | WS_VISIBLE | SS_ICON, 18, 18, 34, 34, hWnd, ControlIdToMenuHandle(kIconControlId), m_hInstance, NULL);
-        if (m_hIconControl && m_hLogoIcon) {
-            SendMessageW(m_hIconControl, STM_SETICON, reinterpret_cast<WPARAM>(m_hLogoIcon), 0);
-        }
+        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Регулировка уровня громкости микрофона. Изменения применяются сразу.", WS_CHILD | WS_VISIBLE, 24, 20, 372, 36, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
 
-        m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Adjust the default microphone input volume. Changes are applied immediately.", WS_CHILD | WS_VISIBLE, 64, 18, 330, 36, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
+        m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 24, 70, 240, 22, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
 
-        m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 24, 70, 220, 22, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
-
-        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_TOOLTIPS, 20, 98, 380, 45, hWnd, ControlIdToMenuHandle(kVolumeTrackbarId), m_hInstance, NULL);
+        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND, 24, 100, 372, 42, hWnd, ControlIdToMenuHandle(kVolumeTrackbarId), m_hInstance, NULL);
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
-            SendMessageW(m_hTrackbar, TBM_SETTICFREQ, 10, 0);
             SendMessageW(m_hTrackbar, TBM_SETPAGESIZE, 0, 10);
             SendMessageW(m_hTrackbar, TBM_SETLINESIZE, 0, 1);
         }
+
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 240, 154, 156, 20, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         HFONT dialogFont = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         SendMessageW(m_hDescriptionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
         SendMessageW(m_hVolumeValueLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
         SendMessageW(m_hTrackbar, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
+        SendMessageW(m_hVersionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(dialogFont), TRUE);
 
         UpdateTrackbarFromConfig();
     }
@@ -257,6 +405,30 @@ private:
                     return 0;
                 }
                 break;
+            case WM_NOTIFY:
+                if (reinterpret_cast<LPNMHDR>(lParam)->hwndFrom == app->m_hTrackbar && reinterpret_cast<LPNMHDR>(lParam)->code == NM_CUSTOMDRAW) {
+                    NMCUSTOMDRAW* customDraw = reinterpret_cast<NMCUSTOMDRAW*>(lParam);
+                    if (customDraw->dwDrawStage == CDDS_PREPAINT) {
+                        FillRect(customDraw->hdc, &customDraw->rc, app->m_hBackgroundBrush);
+                        return CDRF_NOTIFYITEMDRAW;
+                    }
+                    if (customDraw->dwDrawStage == CDDS_ITEMPREPAINT && app->DrawTrackbarPart(customDraw)) {
+                        return CDRF_SKIPDEFAULT;
+                    }
+                }
+                break;
+            case WM_CTLCOLORSTATIC:
+                return app->HandleControlColor(reinterpret_cast<HDC>(wParam));
+            case WM_DPICHANGED:
+                app->UpdateWindowIcons();
+                break;
+            case WM_ERASEBKGND:
+                {
+                    RECT clientRectangle = { 0, 0, 0, 0 };
+                    GetClientRect(hWnd, &clientRectangle);
+                    FillRect(reinterpret_cast<HDC>(wParam), &clientRectangle, app->m_hBackgroundBrush);
+                }
+                return 1;
             case kApplyExternalConfigMessage:
                 app->UpdateTrackbarFromConfig();
                 return 0;
@@ -268,10 +440,7 @@ private:
                 }
                 return 0;
             case WM_DESTROY:
-                if (app->m_hLogoIcon) {
-                    DestroyIcon(app->m_hLogoIcon);
-                    app->m_hLogoIcon = NULL;
-                }
+                app->DestroyWindowIcons();
                 if (app->m_allowExit) {
                     PostQuitMessage(0);
                 }
@@ -282,12 +451,14 @@ private:
     }
 
     HINSTANCE m_hInstance = NULL;
+    HBRUSH m_hBackgroundBrush = NULL;
     HWND m_hWnd = NULL;
-    HWND m_hIconControl = NULL;
     HWND m_hDescriptionLabel = NULL;
     HWND m_hVolumeValueLabel = NULL;
     HWND m_hTrackbar = NULL;
-    HICON m_hLogoIcon = NULL;
+    HWND m_hVersionLabel = NULL;
+    HICON m_hSmallIcon = NULL;
+    HICON m_hBigIcon = NULL;
     bool m_allowExit = false;
     ConfigManager m_configManager;
     AudioManager m_audioManager;
