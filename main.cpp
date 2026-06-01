@@ -33,6 +33,8 @@ constexpr COLORREF kAccentColor = RGB(0, 120, 215);
 constexpr COLORREF kTrackBackgroundColor = RGB(225, 229, 235);
 constexpr COLORREF kWindowBackgroundColor = RGB(255, 255, 255);
 constexpr COLORREF kTextColor = RGB(32, 32, 32);
+constexpr int kTrackThumbDiameter = 20;
+constexpr int kTrackChannelHeight = 6;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
 
 std::wstring MakeVolumeLabelText(float volume) {
@@ -193,7 +195,8 @@ private:
         int trackLeft = 10;
         int trackRight = clientRectangle.right - 10;
         int trackCenterY = (clientRectangle.bottom - clientRectangle.top) / 2;
-        RECT trackRectangle = { trackLeft, trackCenterY - 3, trackRight, trackCenterY + 3 };
+        int trackHalfHeight = kTrackChannelHeight / 2;
+        RECT trackRectangle = { trackLeft, trackCenterY - trackHalfHeight, trackRight, trackCenterY + trackHalfHeight };
 
         HBRUSH backgroundBrush = CreateSolidBrush(kTrackBackgroundColor);
         HBRUSH accentBrush = CreateSolidBrush(kAccentColor);
@@ -221,21 +224,34 @@ private:
     }
 
     void DrawTrackbarThumb(HDC deviceContext) {
-        RECT thumbRectangle = { 0, 0, 0, 0 };
-        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&thumbRectangle));
-        InflateRect(&thumbRectangle, 1, 1);
+        RECT nativeThumbRectangle = { 0, 0, 0, 0 };
+        SendMessageW(m_hTrackbar, TBM_GETTHUMBRECT, 0, reinterpret_cast<LPARAM>(&nativeThumbRectangle));
 
+        int thumbCenterX = (nativeThumbRectangle.left + nativeThumbRectangle.right) / 2;
+        int thumbCenterY = (nativeThumbRectangle.top + nativeThumbRectangle.bottom) / 2;
+        int thumbRadius = kTrackThumbDiameter / 2;
+        RECT outerThumbRectangle = { thumbCenterX - thumbRadius, thumbCenterY - thumbRadius, thumbCenterX + thumbRadius, thumbCenterY + thumbRadius };
+        RECT innerThumbRectangle = { outerThumbRectangle.left + 4, outerThumbRectangle.top + 4, outerThumbRectangle.right - 4, outerThumbRectangle.bottom - 4 };
+
+        HBRUSH accentBrush = CreateSolidBrush(kAccentColor);
         HBRUSH thumbBrush = CreateSolidBrush(kWindowBackgroundColor);
-        HPEN thumbPen = CreatePen(PS_SOLID, 2, kAccentColor);
+        HPEN accentPen = CreatePen(PS_SOLID, 1, kAccentColor);
+        HPEN whitePen = CreatePen(PS_SOLID, 1, kWindowBackgroundColor);
 
-        HGDIOBJ previousBrush = SelectObject(deviceContext, thumbBrush);
-        HGDIOBJ previousPen = SelectObject(deviceContext, thumbPen);
-        RoundRect(deviceContext, thumbRectangle.left, thumbRectangle.top, thumbRectangle.right, thumbRectangle.bottom, 8, 8);
+        HGDIOBJ previousBrush = SelectObject(deviceContext, accentBrush);
+        HGDIOBJ previousPen = SelectObject(deviceContext, accentPen);
+        Ellipse(deviceContext, outerThumbRectangle.left, outerThumbRectangle.top, outerThumbRectangle.right, outerThumbRectangle.bottom);
+
+        SelectObject(deviceContext, thumbBrush);
+        SelectObject(deviceContext, whitePen);
+        Ellipse(deviceContext, innerThumbRectangle.left, innerThumbRectangle.top, innerThumbRectangle.right, innerThumbRectangle.bottom);
 
         SelectObject(deviceContext, previousBrush);
         SelectObject(deviceContext, previousPen);
+        DeleteObject(accentBrush);
         DeleteObject(thumbBrush);
-        DeleteObject(thumbPen);
+        DeleteObject(accentPen);
+        DeleteObject(whitePen);
     }
 
     LRESULT HandleControlColor(HDC deviceContext) {
@@ -307,11 +323,12 @@ private:
 
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 24, 70, 240, 22, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
 
-        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND, 24, 100, 372, 42, hWnd, ControlIdToMenuHandle(kVolumeTrackbarId), m_hInstance, NULL);
+        m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TOOLTIPS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 24, 100, 372, 42, hWnd, ControlIdToMenuHandle(kVolumeTrackbarId), m_hInstance, NULL);
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
             SendMessageW(m_hTrackbar, TBM_SETPAGESIZE, 0, 10);
             SendMessageW(m_hTrackbar, TBM_SETLINESIZE, 0, 1);
+            SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, kTrackThumbDiameter, 0);
         }
 
         m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 240, 154, 156, 20, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
