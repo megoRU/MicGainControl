@@ -30,9 +30,9 @@
 
 namespace {
 constexpr int kBaseWindowClientWidth = 520;
-constexpr int kBaseWindowClientHeight = 260;
+constexpr int kBaseWindowClientHeight = 230;
 constexpr int kMinimumWindowClientWidth = 460;
-constexpr int kMinimumWindowClientHeight = 240;
+constexpr int kMinimumWindowClientHeight = 220;
 constexpr int kContentMargin = 20;
 constexpr int kTrackbarId = 1002;
 constexpr int kTitleLabelId = 1003;
@@ -322,10 +322,10 @@ private:
         int margin = Scale(kContentMargin);
         int contentWidth = clientRectangle.right - clientRectangle.left - (margin * 2);
         int titleHeight = Scale(24);
-        int descriptionHeight = Scale(38);
+        int descriptionHeight = Scale(34);
         int captionHeight = Scale(22);
         int valueWidth = Scale(72);
-        int trackbarHeight = Scale(48);
+        int trackbarHeight = Scale(42);
         int footerHeight = Scale(22);
         int y = margin;
 
@@ -333,15 +333,42 @@ private:
         y += titleHeight + Scale(4);
 
         MoveWindow(m_hDescriptionLabel, margin, y, contentWidth, descriptionHeight, TRUE);
-        y += descriptionHeight + Scale(16);
+        y += descriptionHeight + Scale(12);
 
         MoveWindow(m_hVolumeCaptionLabel, margin, y, contentWidth - valueWidth - Scale(12), captionHeight, TRUE);
         MoveWindow(m_hVolumeValueLabel, clientRectangle.right - margin - valueWidth, y, valueWidth, captionHeight, TRUE);
-        y += captionHeight + Scale(6);
+        y += captionHeight + Scale(4);
 
         MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
 
         MoveWindow(m_hVersionLabel, margin, clientRectangle.bottom - margin - footerHeight, contentWidth, footerHeight, TRUE);
+    }
+
+    void SubclassTrackbar() {
+        if (!m_hTrackbar || m_originalTrackbarProc) {
+            return;
+        }
+
+        SetWindowLongPtrW(m_hTrackbar, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+        m_originalTrackbarProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(m_hTrackbar, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TrackbarProc)));
+    }
+
+    void RestoreTrackbarSubclass() {
+        if (!m_hTrackbar || !m_originalTrackbarProc) {
+            return;
+        }
+
+        SetWindowLongPtrW(m_hTrackbar, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_originalTrackbarProc));
+        SetWindowLongPtrW(m_hTrackbar, GWLP_USERDATA, 0);
+        m_originalTrackbarProc = nullptr;
+    }
+
+    void PaintTrackbar(HDC deviceContext) {
+        RECT clientRectangle = { 0, 0, 0, 0 };
+        GetClientRect(m_hTrackbar, &clientRectangle);
+        FillRect(deviceContext, &clientRectangle, m_hBackgroundBrush);
+        DrawTrackbarChannel(deviceContext);
+        DrawTrackbarThumb(deviceContext);
     }
 
     bool DrawTrackbarPart(NMCUSTOMDRAW* customDraw) {
@@ -519,6 +546,7 @@ private:
             SendMessageW(m_hTrackbar, TBM_SETPAGESIZE, 0, 10);
             SendMessageW(m_hTrackbar, TBM_SETLINESIZE, 0, 1);
             SendMessageW(m_hTrackbar, TBM_SETTHUMBLENGTH, Scale(kTrackThumbDiameter), 0);
+            SubclassTrackbar();
         }
 
         ApplyFontsToControls();
@@ -560,6 +588,7 @@ private:
         m_configManager.SetMicrophoneVolume(volume);
         m_audioManager.ApplyVolumeImmediately(volume);
         UpdateVolumeLabel(volumePercent);
+        InvalidateRect(m_hTrackbar, nullptr, TRUE);
     }
 
     void ShowMainWindow() {
@@ -601,6 +630,39 @@ private:
         AdjustWindowRectExForDpi(&minimumRectangle, windowStyle, FALSE, windowExStyle, m_dpi);
         minMaxInfo->ptMinTrackSize.x = minimumRectangle.right - minimumRectangle.left;
         minMaxInfo->ptMinTrackSize.y = minimumRectangle.bottom - minimumRectangle.top;
+    }
+
+    static LRESULT CALLBACK TrackbarProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        Application* app = reinterpret_cast<Application*>(GetWindowLongPtrW(hWnd, GWLP_USERDATA));
+        if (!app || !app->m_originalTrackbarProc) {
+            return DefWindowProcW(hWnd, uMsg, wParam, lParam);
+        }
+
+        switch (uMsg) {
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT:
+            {
+                PAINTSTRUCT paintStruct = {};
+                HDC deviceContext = BeginPaint(hWnd, &paintStruct);
+                app->PaintTrackbar(deviceContext);
+                EndPaint(hWnd, &paintStruct);
+            }
+            return 0;
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_MOUSEMOVE:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        case WM_MOUSEWHEEL:
+            {
+                LRESULT result = CallWindowProcW(app->m_originalTrackbarProc, hWnd, uMsg, wParam, lParam);
+                InvalidateRect(hWnd, nullptr, TRUE);
+                return result;
+            }
+        }
+
+        return CallWindowProcW(app->m_originalTrackbarProc, hWnd, uMsg, wParam, lParam);
     }
 
     static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -682,6 +744,7 @@ private:
                 }
                 return 0;
             case WM_DESTROY:
+                app->RestoreTrackbarSubclass();
                 app->DestroyWindowIcons();
                 if (app->m_allowExit) {
                     PostQuitMessage(0);
@@ -706,6 +769,7 @@ private:
     HWND m_hVolumeValueLabel = NULL;
     HWND m_hTrackbar = NULL;
     HWND m_hVersionLabel = NULL;
+    WNDPROC m_originalTrackbarProc = nullptr;
     HICON m_hSmallIcon = NULL;
     HICON m_hBigIcon = NULL;
     bool m_darkModeEnabled = false;
