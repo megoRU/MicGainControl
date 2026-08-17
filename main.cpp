@@ -32,11 +32,11 @@
 #endif
 
 namespace {
-constexpr int kBaseWindowClientWidth = 520;
-constexpr int kBaseWindowClientHeight = 250;
-constexpr int kMinimumWindowClientWidth = 460;
+constexpr int kBaseWindowClientWidth = 480;
+constexpr int kBaseWindowClientHeight = 260;
+constexpr int kMinimumWindowClientWidth = 420;
 constexpr int kMinimumWindowClientHeight = 240;
-constexpr int kContentMargin = 20;
+constexpr int kContentMargin = 24;
 constexpr int kTrackbarId = 1002;
 constexpr int kTitleLabelId = 1003;
 constexpr int kDescriptionLabelId = 1004;
@@ -45,8 +45,9 @@ constexpr int kVolumeValueLabelId = 1006;
 constexpr int kVersionLabelId = 1007;
 constexpr int kGithubLinkId = 1008;
 constexpr int kEnabledToggleId = 1009;
-constexpr int kTrackThumbDiameter = 26;
-constexpr int kTrackChannelHeight = 14;
+constexpr int kSwitchLabelId = 1010;
+constexpr int kTrackThumbDiameter = 24;
+constexpr int kTrackChannelHeight = 12;
 constexpr UINT kApplyExternalConfigMessage = WM_APP + 1;
 constexpr wchar_t kGithubReleasesUrl[] = L"https://github.com/megoRU/MicGainControl/releases";
 
@@ -251,6 +252,10 @@ private:
             DeleteObject(m_hTitleFont);
             m_hTitleFont = NULL;
         }
+        if (m_hValueFont) {
+            DeleteObject(m_hValueFont);
+            m_hValueFont = NULL;
+        }
         if (m_hTextFont) {
             DeleteObject(m_hTextFont);
             m_hTextFont = NULL;
@@ -277,10 +282,11 @@ private:
 
     void RecreateFonts() {
         DestroyFonts();
-        m_hTitleFont = CreateSegoeFont(11, FW_SEMIBOLD, false);
-        m_hTextFont = CreateSegoeFont(9, FW_NORMAL, false);
-        m_hSecondaryFont = CreateSegoeFont(10, FW_NORMAL, false);
-        m_hLinkFont = CreateSegoeFont(10, FW_NORMAL, true);
+        m_hTitleFont = CreateSegoeFont(13, FW_BOLD, false);
+        m_hValueFont = CreateSegoeFont(11, FW_BOLD, false);
+        m_hTextFont = CreateSegoeFont(10, FW_SEMIBOLD, false);
+        m_hSecondaryFont = CreateSegoeFont(9, FW_NORMAL, false);
+        m_hLinkFont = CreateSegoeFont(9, FW_NORMAL, true);
         ApplyFontsToControls();
     }
 
@@ -294,8 +300,11 @@ private:
         if (m_hVolumeCaptionLabel && m_hTextFont) {
             SendMessageW(m_hVolumeCaptionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTextFont), TRUE);
         }
-        if (m_hVolumeValueLabel && m_hTitleFont) {
-            SendMessageW(m_hVolumeValueLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTitleFont), TRUE);
+        if (m_hVolumeValueLabel && m_hValueFont) {
+            SendMessageW(m_hVolumeValueLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hValueFont), TRUE);
+        }
+        if (m_hSwitchLabel && m_hTextFont) {
+            SendMessageW(m_hSwitchLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hTextFont), TRUE);
         }
         if (m_hVersionLabel && m_hSecondaryFont) {
             SendMessageW(m_hVersionLabel, WM_SETFONT, reinterpret_cast<WPARAM>(m_hSecondaryFont), TRUE);
@@ -315,24 +324,24 @@ private:
     ThemeColors GetThemeColors(bool darkModeEnabled) const {
         if (darkModeEnabled) {
             return ThemeColors{
-                RGB(32, 32, 32),
-                RGB(243, 243, 243),
-                RGB(200, 200, 200),
-                RGB(72, 72, 72),
-                RGB(96, 205, 255),
-                RGB(96, 205, 255),
-                RGB(245, 245, 245)
+                RGB(32, 32, 32),       // backgroundColor
+                RGB(243, 243, 243),    // textColor
+                RGB(160, 160, 160),    // secondaryTextColor
+                RGB(60, 60, 60),       // trackColor
+                RGB(96, 205, 255),     // accentColor (#60CDFF)
+                RGB(32, 32, 32),       // thumbFillColor
+                RGB(96, 205, 255)      // thumbBorderColor
             };
         }
 
         return ThemeColors{
-            RGB(249, 249, 249),
-            RGB(32, 32, 32),
-            RGB(96, 96, 96),
-            RGB(214, 218, 224),
-            RGB(0, 120, 215),
-            RGB(0, 120, 215),
-            RGB(255, 255, 255)
+            RGB(255, 255, 255),    // backgroundColor
+            RGB(26, 26, 26),       // textColor
+            RGB(115, 115, 115),    // secondaryTextColor
+            RGB(229, 229, 229),    // trackColor
+            RGB(0, 120, 215),      // accentColor (#0078D7)
+            RGB(255, 255, 255),    // thumbFillColor
+            RGB(0, 120, 215)       // thumbBorderColor
         };
     }
 
@@ -358,13 +367,13 @@ private:
         }
 
         if (m_hWnd) {
-            InvalidateRect(m_hWnd, nullptr, FALSE);
+            InvalidateRect(m_hWnd, nullptr, TRUE);
         }
         if (m_hTrackbar) {
-            InvalidateRect(m_hTrackbar, nullptr, FALSE);
+            InvalidateRect(m_hTrackbar, nullptr, TRUE);
         }
         if (m_hEnabledToggle) {
-            InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
+            InvalidateRect(m_hEnabledToggle, nullptr, TRUE);
         }
     }
 
@@ -378,30 +387,34 @@ private:
 
         int margin = Scale(kContentMargin);
         int contentWidth = clientRectangle.right - clientRectangle.left - (margin * 2);
-        int titleHeight = Scale(24);
-        int toggleWidth = Scale(110);
-        int descriptionHeight = Scale(24);
+        int iconSize = Scale(24);
+        int titleHeight = Scale(26);
+        int descriptionHeight = Scale(18);
         int captionHeight = Scale(22);
-        int valueWidth = Scale(72);
-        int trackbarHeight = Scale(42);
-        int footerHeight = Scale(22);
-        int linkWidth = Scale(80);
+        int valueWidth = Scale(60);
+        int trackbarHeight = Scale(38);
+        int toggleHeight = Scale(28);
+        int toggleWidth = Scale(80);
+        int footerHeight = Scale(20);
+        int linkWidth = Scale(70);
+
         int y = margin;
 
-        MoveWindow(m_hTitleLabel, margin, y, contentWidth, titleHeight, TRUE);
-        y += titleHeight + Scale(4);
+        MoveWindow(m_hTitleLabel, margin + iconSize + Scale(10), y, contentWidth - iconSize - Scale(10), titleHeight, TRUE);
+        y += titleHeight + Scale(2);
 
         MoveWindow(m_hDescriptionLabel, margin, y, contentWidth, descriptionHeight, TRUE);
-        y += descriptionHeight + Scale(16);
+        y += descriptionHeight + Scale(18);
 
-        MoveWindow(m_hVolumeCaptionLabel, margin, y, contentWidth - valueWidth - Scale(12), captionHeight, TRUE);
+        MoveWindow(m_hVolumeCaptionLabel, margin, y, contentWidth - valueWidth - Scale(10), captionHeight, TRUE);
         MoveWindow(m_hVolumeValueLabel, clientRectangle.right - margin - valueWidth, y, valueWidth, captionHeight, TRUE);
-        y += captionHeight + Scale(4);
+        y += captionHeight + Scale(6);
 
         MoveWindow(m_hTrackbar, margin, y, contentWidth, trackbarHeight, TRUE);
-        y += trackbarHeight + Scale(8);
+        y += trackbarHeight + Scale(16);
 
-        MoveWindow(m_hEnabledToggle, margin, y, toggleWidth, Scale(30), TRUE);
+        MoveWindow(m_hSwitchLabel, margin, y + Scale(3), contentWidth - toggleWidth - Scale(10), captionHeight, TRUE);
+        MoveWindow(m_hEnabledToggle, clientRectangle.right - margin - toggleWidth, y, toggleWidth, toggleHeight, TRUE);
 
         int footerY = clientRectangle.bottom - margin - footerHeight;
         MoveWindow(m_hGithubLink, margin, footerY, linkWidth, footerHeight, TRUE);
@@ -549,6 +562,40 @@ private:
         graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
     }
 
+    void DrawMicrophoneIcon(Gdiplus::Graphics& graphics, float x, float y, float size, COLORREF color) const {
+        Gdiplus::Pen pen(ToGdiplusColor(color), size * 0.08f);
+        pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+        Gdiplus::SolidBrush brush(ToGdiplusColor(color));
+
+        float centerX = x + (size / 2.0f);
+
+        // Mic capsule body
+        float bodyWidth = size * 0.36f;
+        float bodyHeight = size * 0.52f;
+        float bodyLeft = centerX - (bodyWidth / 2.0f);
+        float bodyTop = y + (size * 0.08f);
+        Gdiplus::RectF bodyRect(bodyLeft, bodyTop, bodyWidth, bodyHeight);
+        Gdiplus::GraphicsPath bodyPath;
+        AddCapsulePath(bodyPath, bodyRect);
+        graphics.FillPath(&brush, &bodyPath);
+
+        // Cradle (U-shape)
+        float cradleWidth = size * 0.58f;
+        float cradleHeight = size * 0.42f;
+        float cradleLeft = centerX - (cradleWidth / 2.0f);
+        float cradleTop = y + (size * 0.28f);
+        graphics.DrawArc(&pen, cradleLeft, cradleTop, cradleWidth, cradleHeight, 10.0f, 160.0f);
+
+        // Vertical stem
+        float stemTop = cradleTop + cradleHeight;
+        float stemBottom = y + (size * 0.88f);
+        graphics.DrawLine(&pen, centerX, stemTop, centerX, stemBottom);
+
+        // Base horizontal bar
+        float baseWidth = size * 0.42f;
+        graphics.DrawLine(&pen, centerX - (baseWidth / 2.0f), stemBottom, centerX + (baseWidth / 2.0f), stemBottom);
+    }
+
     void DrawTrackbarChannel(HDC deviceContext) {
         Gdiplus::Graphics graphics(deviceContext);
         ConfigureHighQualityGraphics(graphics);
@@ -608,17 +655,22 @@ private:
         RECT itemRectangle = drawItem->rcItem;
         FillRect(drawItem->hDC, &itemRectangle, m_hBackgroundBrush);
 
+        float switchHeight = static_cast<float>(Scale(20));
+        float switchWidth = static_cast<float>(Scale(40));
+        float switchX = static_cast<float>(itemRectangle.right) - switchWidth;
+        float switchY = static_cast<float>(itemRectangle.top + ((itemRectangle.bottom - itemRectangle.top) / 2)) - (switchHeight / 2.0f);
+
         HFONT previousFont = nullptr;
         if (m_hTextFont) {
             previousFont = reinterpret_cast<HFONT>(SelectObject(drawItem->hDC, m_hTextFont));
         }
 
         SetBkMode(drawItem->hDC, TRANSPARENT);
-        SetTextColor(drawItem->hDC, m_themeColors.secondaryTextColor);
+        SetTextColor(drawItem->hDC, enabled ? m_themeColors.textColor : m_themeColors.secondaryTextColor);
 
         RECT textRectangle = itemRectangle;
-        textRectangle.right -= Scale(54);
-        DrawTextW(drawItem->hDC, enabled ? L"Вкл" : L"Выкл", -1, &textRectangle, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        textRectangle.right = static_cast<int>(switchX) - Scale(8);
+        DrawTextW(drawItem->hDC, enabled ? L"Вкл" : L"Выкл", -1, &textRectangle, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
         if (previousFont) {
             SelectObject(drawItem->hDC, previousFont);
@@ -627,10 +679,6 @@ private:
         Gdiplus::Graphics graphics(drawItem->hDC);
         ConfigureHighQualityGraphics(graphics);
 
-        float switchHeight = static_cast<float>(Scale(22));
-        float switchWidth = static_cast<float>(Scale(44));
-        float switchX = static_cast<float>(itemRectangle.right) - switchWidth;
-        float switchY = static_cast<float>(itemRectangle.top + ((itemRectangle.bottom - itemRectangle.top) / 2)) - (switchHeight / 2.0f);
         Gdiplus::RectF switchRectangle(switchX, switchY, switchWidth, switchHeight);
 
         Gdiplus::GraphicsPath switchPath;
@@ -643,8 +691,25 @@ private:
         float knobX = enabled ? (switchX + switchWidth - knobInset - knobDiameter) : (switchX + knobInset);
         float knobY = switchY + knobInset;
         Gdiplus::RectF knobRectangle(knobX, knobY, knobDiameter, knobDiameter);
-        Gdiplus::SolidBrush knobBrush(ToGdiplusColor(m_themeColors.thumbBorderColor));
+        COLORREF knobColor = enabled ? RGB(255, 255, 255) : m_themeColors.secondaryTextColor;
+        Gdiplus::SolidBrush knobBrush(ToGdiplusColor(knobColor));
         graphics.FillEllipse(&knobBrush, knobRectangle);
+    }
+
+    void PaintMainWindow(HDC hdc) const {
+        RECT clientRectangle = { 0, 0, 0, 0 };
+        GetClientRect(m_hWnd, &clientRectangle);
+        FillRect(hdc, &clientRectangle, m_hBackgroundBrush);
+
+        Gdiplus::Graphics graphics(hdc);
+        ConfigureHighQualityGraphics(graphics);
+
+        int margin = Scale(kContentMargin);
+        int iconSize = Scale(24);
+        int titleHeight = Scale(26);
+        int iconY = margin + ((titleHeight - iconSize) / 2);
+
+        DrawMicrophoneIcon(graphics, static_cast<float>(margin), static_cast<float>(iconY), static_cast<float>(iconSize), m_themeColors.accentColor);
     }
 
     LRESULT HandleControlColor(HWND controlWindow, HDC deviceContext) {
@@ -724,14 +789,15 @@ private:
     }
 
     void CreateChildControls(HWND hWnd) {
-        m_hTitleLabel = CreateWindowExW(0, L"STATIC", L"Громкость микрофона", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTitleLabelId), m_hInstance, NULL);
+        m_hTitleLabel = CreateWindowExW(0, L"STATIC", L"MicGainControl", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTitleLabelId), m_hInstance, NULL);
         m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
-        m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Уровень", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
+        m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Громкость микрофона", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
+        m_hSwitchLabel = CreateWindowExW(0, L"STATIC", L"Микрофон", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kSwitchLabelId), m_hInstance, NULL);
         m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
         m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
-        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.5", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.6", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
@@ -777,8 +843,6 @@ private:
         EnableWindow(m_hTrackbar, enabled ? TRUE : FALSE);
         InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
         InvalidateRect(m_hTrackbar, nullptr, FALSE);
-
-        // Also update color of labels if needed, but for now just the trackbar
     }
 
     void HandleEnabledToggleClicked() {
@@ -975,7 +1039,7 @@ private:
                 app->HandleDpiChanged(wParam, lParam);
                 return 0;
             case WM_SETTINGCHANGE:
-                if (lParam && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0) {
+                if (!lParam || wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0) {
                     app->RefreshTheme();
                     return 0;
                 }
@@ -983,12 +1047,15 @@ private:
             case WM_THEMECHANGED:
                 app->RefreshTheme();
                 return 0;
-            case WM_ERASEBKGND:
+            case WM_PAINT:
                 {
-                    RECT clientRectangle = { 0, 0, 0, 0 };
-                    GetClientRect(hWnd, &clientRectangle);
-                    FillRect(reinterpret_cast<HDC>(wParam), &clientRectangle, app->m_hBackgroundBrush);
+                    PAINTSTRUCT ps;
+                    HDC hdc = BeginPaint(hWnd, &ps);
+                    app->PaintMainWindow(hdc);
+                    EndPaint(hWnd, &ps);
                 }
+                return 0;
+            case WM_ERASEBKGND:
                 return 1;
             case kApplyExternalConfigMessage:
                 app->UpdateTrackbarFromConfig();
@@ -1021,6 +1088,7 @@ private:
     ThemeColors m_themeColors = GetThemeColors(false);
     HBRUSH m_hBackgroundBrush = NULL;
     HFONT m_hTitleFont = NULL;
+    HFONT m_hValueFont = NULL;
     HFONT m_hTextFont = NULL;
     HFONT m_hSecondaryFont = NULL;
     HFONT m_hLinkFont = NULL;
@@ -1029,6 +1097,7 @@ private:
     HWND m_hDescriptionLabel = NULL;
     HWND m_hVolumeCaptionLabel = NULL;
     HWND m_hVolumeValueLabel = NULL;
+    HWND m_hSwitchLabel = NULL;
     HWND m_hEnabledToggle = NULL;
     HWND m_hTrackbar = NULL;
     HWND m_hVersionLabel = NULL;
