@@ -56,10 +56,6 @@ target_include_directories(MicGainControl PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/Generated\ Files
 )
 
-# Set MSVC target properties for Windows App SDK and C++/WinRT NuGet packages
-set(CPPWINRT_VER "2.0.240111.5")
-set(WASDK_VER "1.5.240311000")
-
 set_target_properties(MicGainControl PROPERTIES
     VS_GLOBAL_KEYWORD "Win32Proj"
     VS_GLOBAL_EnableTypeInfoReflection "false"
@@ -73,19 +69,6 @@ if(MSVC)
         "/MANIFEST:EMBED"
         "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/app.manifest"
     )
-
-    # Attach props and targets for NuGet packages if present in build tree
-    set(PKG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packages")
-    if(EXISTS "${PKG_DIR}/Microsoft.Windows.CppWinRT.${CPPWINRT_VER}/build/native/Microsoft.Windows.CppWinRT.props")
-        set_property(TARGET MicGainControl APPEND PROPERTY VS_PROJECT_IMPORT_BEFORE
-            "${PKG_DIR}/Microsoft.Windows.CppWinRT.${CPPWINRT_VER}/build/native/Microsoft.Windows.CppWinRT.props"
-            "${PKG_DIR}/Microsoft.WindowsAppSDK.${WASDK_VER}/build/native/Microsoft.WindowsAppSDK.props"
-        )
-        set_property(TARGET MicGainControl APPEND PROPERTY VS_PROJECT_IMPORT
-            "${PKG_DIR}/Microsoft.Windows.CppWinRT.${CPPWINRT_VER}/build/native/Microsoft.Windows.CppWinRT.targets"
-            "${PKG_DIR}/Microsoft.WindowsAppSDK.${WASDK_VER}/build/native/Microsoft.WindowsAppSDK.targets"
-        )
-    endif()
 endif()
 
 target_link_libraries(MicGainControl PRIVATE

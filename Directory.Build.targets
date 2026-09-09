@@ -1,4 +1,9 @@
 <Project>
+  <ImportGroup Condition="Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.targets')">
+    <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.targets" />
+    <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.targets" />
+  </ImportGroup>
+
   <ItemDefinitionGroup>
     <Midl>
       <EnableWindowsRuntime>true</EnableWindowsRuntime>

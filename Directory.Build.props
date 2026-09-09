@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <CppWinRTOptimize>true</CppWinRTOptimize>
+    <CppWinRTHttp>false</CppWinRTHttp>
+  </PropertyGroup>
+  <ImportGroup Condition="Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.props')">
+    <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.props" />
+    <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.props" />
+  </ImportGroup>
+</Project>
