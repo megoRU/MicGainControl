@@ -42,6 +42,7 @@ set(SOURCE_FILES
 
 set_source_files_properties(App.xaml PROPERTIES VS_XAML_TYPE "ApplicationDefinition")
 set_source_files_properties(MainWindow.xaml PROPERTIES VS_XAML_TYPE "Page")
+set_source_files_properties(${IDL_FILES} PROPERTIES VS_SETTINGS "EnableWindowsRuntime=true")
 
 add_executable(MicGainControl WIN32
     ${SOURCE_FILES}

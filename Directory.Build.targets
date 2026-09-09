@@ -1,0 +1,7 @@
+<Project>
+  <ItemDefinitionGroup>
+    <Midl>
+      <EnableWindowsRuntime>true</EnableWindowsRuntime>
+    </Midl>
+  </ItemDefinitionGroup>
+</Project>
