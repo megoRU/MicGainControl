@@ -2,7 +2,7 @@
   <ItemDefinitionGroup>
     <Midl>
       <EnableWindowsRuntime>true</EnableWindowsRuntime>
-      <AdditionalMetadataDirectories>%(AdditionalMetadataDirectories);$(WindowsSDK_MetadataPath);$(WindowsSDK_UnionWinMDPath)</AdditionalMetadataDirectories>
+      <AdditionalUsingDirectories>%(AdditionalUsingDirectories);$(WindowsSDK_UnionWinMDPath)</AdditionalUsingDirectories>
     </Midl>
   </ItemDefinitionGroup>
 </Project>

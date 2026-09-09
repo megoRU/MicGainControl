@@ -1,5 +1,3 @@
-import "Windows.Foundation.idl";
-
 namespace MicGainControl
 {
     [default_interface]
