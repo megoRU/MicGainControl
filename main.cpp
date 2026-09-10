@@ -28,9 +28,7 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
 
     RegisterAutostart();
 
-    winrt::init_apartment(winrt::apartment_type::single_threaded);
-
-    HRESULT hr = MddBootstrapInitialize2(
+    const HRESULT hr = MddBootstrapInitialize2(
         WINDOWSAPPSDK_RELEASE_MAJOR_MINOR,
         WINDOWSAPPSDK_RELEASE_VERSION_TAG_W,
         PACKAGE_VERSION{},
@@ -43,9 +41,15 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
         return hr;
     }
 
-    winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
-        winrt::make<winrt::MicGainControl::implementation::App>();
-    });
+    {
+        winrt::init_apartment(winrt::apartment_type::single_threaded);
+
+        winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
+            winrt::make<winrt::MicGainControl::implementation::App>();
+        });
+
+        winrt::uninit_apartment();
+    }
 
     MddBootstrapShutdown();
 
