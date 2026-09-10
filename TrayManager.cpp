@@ -5,9 +5,17 @@
 TrayManager::TrayManager(HINSTANCE hInstance) : m_hInstance(hInstance) {}
 
 TrayManager::~TrayManager() {
-    Shell_NotifyIconW(NIM_DELETE, &m_nid);
+    RemoveTrayIcon();
+}
+
+void TrayManager::RemoveTrayIcon() {
+    if (m_created) {
+        Shell_NotifyIconW(NIM_DELETE, &m_nid);
+        m_created = false;
+    }
     if (m_nid.hIcon) {
         DestroyIcon(m_nid.hIcon);
+        m_nid.hIcon = nullptr;
     }
 }
 
@@ -33,7 +41,8 @@ bool TrayManager::CreateTrayIcon(HWND hWnd) {
 
     wcscpy_s(m_nid.szTip, L"MicGainControl — контроль громкости микрофона");
 
-    return Shell_NotifyIconW(NIM_ADD, &m_nid) == TRUE;
+    m_created = Shell_NotifyIconW(NIM_ADD, &m_nid) == TRUE;
+    return m_created;
 }
 
 void TrayManager::SetEnabledState(bool enabled) {

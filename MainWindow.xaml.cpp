@@ -8,12 +8,12 @@
 #include <string>
 
 using namespace winrt;
-using namespace Microsoft::UI::Xaml;
+using namespace winrt::Microsoft::UI::Xaml;
 
 namespace {
     constexpr UINT_PTR kSubclassId = 101;
 
-    LRESULT CALLBACK SubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+    LRESULT CALLBACK SubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, [[maybe_unused]] UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
     {
         auto self = reinterpret_cast<winrt::MicGainControl::implementation::MainWindow*>(dwRefData);
         if (self)
@@ -31,7 +31,7 @@ namespace {
                 return 0;
             }
         }
-        return DefSubclassProc(hWnd, uMsg, wParam, lParam, uIdSubclass, dwRefData);
+        return DefSubclassProc(hWnd, uMsg, wParam, lParam);
     }
 }
 
@@ -108,14 +108,17 @@ namespace winrt::MicGainControl::implementation
                 HideMainWindow();
             }
         });
+
+        m_updatingUI = false;
     }
 
     MainWindow::~MainWindow()
     {
-        HWND hwnd = GetHwnd();
-        if (hwnd)
+        // Окно уже разрушается, поэтому берём кэшированный HWND, а не спрашиваем его заново.
+        if (m_hWnd)
         {
-            RemoveWindowSubclass(hwnd, SubclassProc, kSubclassId);
+            RemoveWindowSubclass(m_hWnd, SubclassProc, kSubclassId);
+            m_hWnd = nullptr;
         }
     }
 
@@ -140,6 +143,7 @@ namespace winrt::MicGainControl::implementation
 
         if (updateUI)
         {
+            const bool wasUpdatingUI = m_updatingUI;
             m_updatingUI = true;
             int volPercent = static_cast<int>((cfg.microphoneVolume * 100.0f) + 0.5f);
             if (volPercent < 0) volPercent = 0;
@@ -149,7 +153,7 @@ namespace winrt::MicGainControl::implementation
             VolumeValueText().Text(std::to_wstring(volPercent) + L"%");
             VolumeSlider().IsEnabled(cfg.enabled);
             EnabledToggle().IsOn(cfg.enabled);
-            m_updatingUI = false;
+            m_updatingUI = wasUpdatingUI;
         }
     }
 
@@ -189,6 +193,11 @@ namespace winrt::MicGainControl::implementation
     {
         this->AppWindow().Show();
         this->Activate();
+
+        if (HWND hwnd = GetHwnd())
+        {
+            SetForegroundWindow(hwnd);
+        }
     }
 
     void MainWindow::HideMainWindow()
@@ -199,6 +208,14 @@ namespace winrt::MicGainControl::implementation
     void MainWindow::ExitApp()
     {
         m_allowExit = true;
+        m_trayManager.RemoveTrayIcon();
         this->Close();
+
+        // Окно могло ни разу не показываться (старт в трее), поэтому закрытия
+        // окна недостаточно — завершаем приложение явно.
+        if (auto app = winrt::Microsoft::UI::Xaml::Application::Current())
+        {
+            app.Exit();
+        }
     }
 }

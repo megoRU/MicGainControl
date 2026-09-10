@@ -22,7 +22,7 @@
             <FontIcon Glyph="&#xE720;" FontSize="24" Foreground="{ThemeResource AccentFillColorDefaultBrush}"/>
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="MicGainControl" Style="{StaticResource TitleTextBlockStyle}" FontSize="18" FontWeight="Bold"/>
-                <TextBlock Text="Изменения применяются сразу" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillSecondaryBrush}"/>
+                <TextBlock Text="Изменения применяются сразу" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
         </StackPanel>
 
@@ -44,7 +44,7 @@
         <!-- Footer -->
         <Grid Grid.Row="4" VerticalAlignment="Bottom">
             <HyperlinkButton Content="GitHub" NavigateUri="https://github.com/megoRU/MicGainControl/releases" HorizontalAlignment="Left" Padding="0"/>
-            <TextBlock Text="Версия 0.1.6" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBlock Text="Версия 0.1.6" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
         </Grid>
     </Grid>
 </Window>

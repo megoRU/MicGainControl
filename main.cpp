@@ -7,14 +7,6 @@
 #include "App.xaml.h"
 #include <string>
 
-#ifndef WINDOWSAPPSDK_RELEASE_MAJOR_MINOR
-#define WINDOWSAPPSDK_RELEASE_MAJOR_MINOR 0x00010005u
-#endif
-
-#ifndef WINDOWSAPPSDK_RELEASE_VERSION_TAG_W
-#define WINDOWSAPPSDK_RELEASE_VERSION_TAG_W L""
-#endif
-
 void RegisterAutostart() {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
@@ -37,9 +29,9 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
     RegisterAutostart();
 
     const HRESULT hr = MddBootstrapInitialize2(
-        WINDOWSAPPSDK_RELEASE_MAJOR_MINOR,
+        WINDOWSAPPSDK_RELEASE_MAJORMINOR,
         WINDOWSAPPSDK_RELEASE_VERSION_TAG_W,
-        PACKAGE_VERSION{},
+        PACKAGE_VERSION{ WINDOWSAPPSDK_RUNTIME_VERSION_UINT64 },
         MddBootstrapInitializeOptions_OnNoMatch_ShowUI
     );
 

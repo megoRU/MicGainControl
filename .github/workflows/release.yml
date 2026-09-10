@@ -29,17 +29,27 @@ jobs:
       - name: Build
         run: msbuild MicGainControl.sln /p:Configuration=Release /p:Platform=x64
 
+      # Приложение неупакованное (WindowsPackageType=None): рядом с exe обязан лежать
+      # Microsoft.WindowsAppRuntime.Bootstrap.dll, иначе оно не стартует.
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item x64/Release/MicGainControl.exe dist/
+          Copy-Item x64/Release/Microsoft.WindowsAppRuntime.Bootstrap.dll dist/
+          Compress-Archive -Path dist/* -DestinationPath MicGainControl.zip -Force
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: MicGainControl
-          path: x64/Release/MicGainControl.exe
+          path: dist/
 
       - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: x64/Release/MicGainControl.exe
+          files: MicGainControl.zip
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
           draft: false

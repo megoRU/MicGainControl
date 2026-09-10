@@ -14,9 +14,20 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A8C11F96-82A8-4C8D-3ED0-53C47D22322B}</ProjectGuid>
-    <Keyword>Win32Proj</Keyword>
+    <ProjectName>MicGainControl</ProjectName>
     <RootNamespace>MicGainControl</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>16.0</MinimumVisualStudioVersion>
+    <!-- Desktop (non-AppContainer) app that still needs the Windows Store C++ build rules:
+         they are what runs the XAML markup compiler for native projects. -->
+    <AppContainerApplication>false</AppContainerApplication>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- Unpackaged: no MSIX identity, activate the Windows App SDK via the bootstrapper. -->
     <WindowsPackageType>None</WindowsPackageType>
     <AppxPackage>false</AppxPackage>
   </PropertyGroup>

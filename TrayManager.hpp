@@ -14,6 +14,7 @@ public:
     ~TrayManager();
 
     bool CreateTrayIcon(HWND hWnd);
+    void RemoveTrayIcon();
     void ShowContextMenu(HWND hWnd);
 
     void SetEnabledState(bool enabled);
@@ -26,6 +27,7 @@ public:
 private:
     HINSTANCE m_hInstance;
     NOTIFYICONDATAW m_nid = {0};
+    bool m_created = false;
     bool m_enabled = true;
 
     CommandCallback m_onExit;

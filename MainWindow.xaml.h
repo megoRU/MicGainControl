@@ -29,7 +29,9 @@ namespace winrt::MicGainControl::implementation
         TrayManager m_trayManager{ GetModuleHandle(nullptr) };
         HWND m_hWnd{ nullptr };
         bool m_allowExit{ false };
-        bool m_updatingUI{ false };
+        // true до конца конструктора: события XAML при разборе разметки не должны
+        // перезаписывать ещё не загруженный конфиг.
+        bool m_updatingUI{ true };
         winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcher{ nullptr };
     };
 }

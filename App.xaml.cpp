@@ -4,7 +4,7 @@
 #include "App.g.cpp"
 
 using namespace winrt;
-using namespace Microsoft::UI::Xaml;
+using namespace winrt::Microsoft::UI::Xaml;
 
 namespace winrt::MicGainControl::implementation
 {
@@ -24,7 +24,9 @@ namespace winrt::MicGainControl::implementation
 
     void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& args)
     {
+        // Приложение живёт в трее и прописано в автозапуск, поэтому окно создаётся,
+        // но не показывается при старте (Win32-версия делала ShowWindow(SW_HIDE)).
+        // Окно открывается двойным кликом по значку в трее или пунктом «Открыть окно».
         m_window = winrt::make<MicGainControl::implementation::MainWindow>();
-        m_window.Activate();
     }
 }
