@@ -114,11 +114,9 @@
   </ItemGroup>
   <ItemGroup>
     <Midl Include="App.idl">
-      <DependentUpon>App.xaml</DependentUpon>
       <EnableWindowsRuntime>true</EnableWindowsRuntime>
     </Midl>
     <Midl Include="MainWindow.idl">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
       <EnableWindowsRuntime>true</EnableWindowsRuntime>
     </Midl>
   </ItemGroup>
