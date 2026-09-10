@@ -29,16 +29,6 @@ jobs:
       - name: Build
         run: msbuild MicGainControl.sln /p:Configuration=Release /p:Platform=x64
 
-      - name: Diagnose generated XAML code
-        if: failure()
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse -Filter '*.g.*' -Path 'Generated Files' -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName
-          foreach ($f in @('Generated Files/module.g.cpp', 'Generated Files/App.xaml.g.hpp')) {
-            if (Test-Path $f) { "===== $f ====="; Get-Content $f -TotalCount 60 }
-          }
-
       # Приложение неупакованное (WindowsPackageType=None): рядом с exe обязан лежать
       # Microsoft.WindowsAppRuntime.Bootstrap.dll, иначе оно не стартует.
       - name: Package
