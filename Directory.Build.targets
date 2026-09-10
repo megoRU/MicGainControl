@@ -8,6 +8,7 @@
     <Midl>
       <EnableWindowsRuntime>true</EnableWindowsRuntime>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories);$(WindowsSDK_UnionWinMDPath)</AdditionalUsingDirectories>
+      <OutputDirectory>$(IntDir)</OutputDirectory>
     </Midl>
   </ItemDefinitionGroup>
 </Project>
