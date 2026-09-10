@@ -1,11 +1,19 @@
 #include "pch.h"
 #include <windows.h>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Microsoft.UI.Xaml.h>
 #include <MddBootstrap.h>
 #include <WindowsAppSDK-VersionInfo.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Microsoft.UI.Xaml.h>
 #include "App.xaml.h"
 #include <string>
+
+#ifndef WINDOWSAPPSDK_RELEASE_MAJOR_MINOR
+#define WINDOWSAPPSDK_RELEASE_MAJOR_MINOR 0x00010005u
+#endif
+
+#ifndef WINDOWSAPPSDK_RELEASE_VERSION_TAG_W
+#define WINDOWSAPPSDK_RELEASE_VERSION_TAG_W L""
+#endif
 
 void RegisterAutostart() {
     wchar_t exePath[MAX_PATH];
