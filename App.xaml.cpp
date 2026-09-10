@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "MainWindow.xaml.h"
-#include "App.g.cpp"
 
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
@@ -10,6 +9,10 @@ namespace winrt::MicGainControl::implementation
 {
     App::App()
     {
+        // Загружает App.xaml вместе с XamlControlsResources — без этого
+        // не работают стандартные стили и ThemeResource'ы WinUI.
+        InitializeComponent();
+
 #if defined(DEBUG) || defined(_DEBUG)
         UnhandledException([this](IInspectable const&, UnhandledExceptionEventArgs const& e)
         {
