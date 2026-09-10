@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Required for XAML classes: makes cppwinrt.exe run with -opt, which emits the
+         per-class <Class>.g.cpp files that App.xaml.cpp / MainWindow.xaml.cpp include. -->
+    <CppWinRTOptimized>true</CppWinRTOptimized>
+    <CppWinRTRootNamespaceAutoMerge>true</CppWinRTRootNamespaceAutoMerge>
+    <CppWinRTGenerateWindowsMetadata>true</CppWinRTGenerateWindowsMetadata>
+  </PropertyGroup>
+</Project>

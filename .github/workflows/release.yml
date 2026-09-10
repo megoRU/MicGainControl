@@ -20,23 +20,36 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=Release
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet Packages
+        run: nuget restore packages.config -OutputDirectory packages
 
       - name: Build
-        run: cmake --build ${{ github.workspace }}/build --config Release
+        run: msbuild MicGainControl.sln /p:Configuration=Release /p:Platform=x64
+
+      # Приложение неупакованное (WindowsPackageType=None): рядом с exe обязан лежать
+      # Microsoft.WindowsAppRuntime.Bootstrap.dll, иначе оно не стартует.
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item x64/Release/MicGainControl.exe dist/
+          Copy-Item x64/Release/Microsoft.WindowsAppRuntime.Bootstrap.dll dist/
+          Compress-Archive -Path dist/* -DestinationPath MicGainControl.zip -Force
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: MicGainControl
-          path: build/Release/MicGainControl.exe
+          path: dist/
 
       - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Release/MicGainControl.exe
+          files: MicGainControl.zip
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
           draft: false

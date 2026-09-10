@@ -1,0 +1,13 @@
+# Сборочные артефакты MSBuild
+/x64/
+/MicGainControl/x64/
+/dist/
+*.user
+*.aps
+
+# NuGet
+/packages/
+
+# Генерируется cppwinrt.exe в корне проекта
+/XamlMetaDataProvider.idl
+/XamlMetaDataProvider.cpp
