@@ -26,23 +26,20 @@ jobs:
       - name: Restore NuGet Packages
         run: nuget restore packages.config -OutputDirectory packages
 
-      - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -A x64 -DCMAKE_BUILD_TYPE=Release
-
       - name: Build
-        run: cmake --build ${{ github.workspace }}/build --config Release
+        run: msbuild MicGainControl.sln /p:Configuration=Release /p:Platform=x64
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: MicGainControl
-          path: build/Release/MicGainControl.exe
+          path: x64/Release/MicGainControl.exe
 
       - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Release/MicGainControl.exe
+          files: x64/Release/MicGainControl.exe
           tag_name: v${{ github.run_number }}
           name: Release v${{ github.run_number }}
           draft: false
