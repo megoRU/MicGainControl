@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # windows-latest сейчас = образ с Visual Studio 18, где нет связки
+    # "UWP + toolset v143", которая нужна компилятору XAML-разметки.
+    runs-on: windows-2025
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
