@@ -1,3 +1,4 @@
+#include "pch.h"
 #include "TrayManager.hpp"
 #include "resource.h"
 

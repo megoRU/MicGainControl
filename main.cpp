@@ -32,7 +32,7 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
         WINDOWSAPPSDK_RELEASE_MAJOR_MINOR,
         WINDOWSAPPSDK_RELEASE_VERSION_TAG_W,
         PACKAGE_VERSION{},
-        MddBootstrapInitializeOptions_OnNoMatch_Option_OnNoMatch_ShowUI
+        MddBootstrapInitializeOptions_OnNoMatch_ShowUI
     );
 
     if (FAILED(hr)) {
