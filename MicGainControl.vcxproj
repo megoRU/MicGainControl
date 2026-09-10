@@ -21,6 +21,10 @@
     <!-- Desktop (non-AppContainer) app that still needs the Windows Store C++ build rules:
          they are what runs the XAML markup compiler for native projects. -->
     <AppContainerApplication>false</AppContainerApplication>
+    <WindowsAppContainer>false</WindowsAppContainer>
+    <!-- Заставляет XAML-компилятор генерировать десктопный код, а не UWP-шный
+         (иначе он тянет за собой UWP-точку входа и экспорты модуля). -->
+    <EnableWin32Codegen>true</EnableWin32Codegen>
     <ApplicationType>Windows Store</ApplicationType>
     <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
@@ -67,7 +71,7 @@
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Generated Files;$(GeneratedFilesDir);$(IntDir)Generated Files;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -86,7 +90,7 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Generated Files;$(GeneratedFilesDir);$(IntDir)Generated Files;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
