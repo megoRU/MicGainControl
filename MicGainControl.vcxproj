@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.props" Condition="Exists('packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.props')" />
-  <Import Project="packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.props" Condition="Exists('packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -18,32 +16,14 @@
     <RootNamespace>MicGainControl</RootNamespace>
     <DefaultLanguage>en-US</DefaultLanguage>
     <MinimumVisualStudioVersion>16.0</MinimumVisualStudioVersion>
-    <!-- Desktop (non-AppContainer) app that still needs the Windows Store C++ build rules:
-         they are what runs the XAML markup compiler for native projects. -->
-    <AppContainerApplication>false</AppContainerApplication>
-    <WindowsAppContainer>false</WindowsAppContainer>
-    <!-- Заставляет XAML-компилятор генерировать десктопный код, а не UWP-шный
-         (иначе он тянет за собой UWP-точку входа и экспорты модуля). -->
-    <EnableWin32Codegen>true</EnableWin32Codegen>
-    <ApplicationType>Windows Store</ApplicationType>
-    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
-    <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <!-- Unpackaged: no MSIX identity, activate the Windows App SDK via the bootstrapper. -->
-    <WindowsPackageType>None</WindowsPackageType>
-    <AppxPackage>false</AppxPackage>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <!-- Не прибиваем toolset к конкретной версии: на раннере стоит VS 18,
-         связки "UWP + v143" там нет. -->
     <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
-    <AppContainerApplication>false</AppContainerApplication>
-    <WindowsAppContainer>false</WindowsAppContainer>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -51,8 +31,6 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
-    <AppContainerApplication>false</AppContainerApplication>
-    <WindowsAppContainer>false</WindowsAppContainer>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -64,12 +42,10 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <WindowsAppContainer>false</WindowsAppContainer>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <WindowsAppContainer>false</WindowsAppContainer>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -79,16 +55,12 @@
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Generated Files;$(GeneratedFilesDir);$(IntDir)Generated Files;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <!-- Десктопное приложение: без этого exe помечается как AppContainer
-           и не запускается вне пакета. -->
-      <AppContainer>false</AppContainer>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>Ole32.lib;Shell32.lib;User32.lib;Advapi32.lib;Mmdevapi.lib;Comctl32.lib;Dwmapi.lib;UxTheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
@@ -101,67 +73,35 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;WINRT_LEAN_AND_MEAN;DISABLE_XAML_GENERATED_MAIN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Generated Files;$(GeneratedFilesDir);$(IntDir)Generated Files;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AppContainer>false</AppContainer>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>Ole32.lib;Shell32.lib;User32.lib;Advapi32.lib;Mmdevapi.lib;Comctl32.lib;Dwmapi.lib;UxTheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
-    <ClInclude Include="App.xaml.h">
-      <DependentUpon>App.xaml</DependentUpon>
-    </ClInclude>
-    <ClInclude Include="MainWindow.xaml.h">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
-    </ClInclude>
+    <ClInclude Include="MainWindow.hpp" />
     <ClInclude Include="AudioManager.hpp" />
     <ClInclude Include="ConfigManager.hpp" />
     <ClInclude Include="TrayManager.hpp" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
-  </ItemGroup>
-  <ItemGroup>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="App.xaml.cpp">
-      <DependentUpon>App.xaml</DependentUpon>
-    </ClCompile>
-    <ClCompile Include="MainWindow.xaml.cpp">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
-    </ClCompile>
+    <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="AudioManager.cpp" />
     <ClCompile Include="ConfigManager.cpp" />
     <ClCompile Include="TrayManager.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Midl Include="MainWindow.idl">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
-      <SubType>Code</SubType>
-      <EnableWindowsRuntime>true</EnableWindowsRuntime>
-    </Midl>
-  </ItemGroup>
-  <ItemGroup>
-    <ApplicationDefinition Include="App.xaml">
-      <SubType>Designer</SubType>
-    </ApplicationDefinition>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="MainWindow.xaml">
-      <SubType>Designer</SubType>
-    </Page>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
@@ -169,12 +109,6 @@
   <ItemGroup>
     <ResourceCompile Include="resources.rc" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-    <Import Project="packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.targets" Condition="Exists('packages\Microsoft.Windows.CppWinRT.2.0.240111.5\build\native\Microsoft.Windows.CppWinRT.targets')" />
-    <Import Project="packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.targets" Condition="Exists('packages\Microsoft.WindowsAppSDK.1.5.240311000\build\native\Microsoft.WindowsAppSDK.targets')" />
-  </ImportGroup>
+  <ImportGroup Label="ExtensionTargets" />
 </Project>
