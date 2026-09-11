@@ -1,11 +1,7 @@
 #include "pch.h"
 #include <windows.h>
-#include <MddBootstrap.h>
-#include <WindowsAppSDK-VersionInfo.h>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Microsoft.UI.Xaml.h>
-#include "App.xaml.h"
 #include <string>
+#include "MainWindow.hpp"
 
 void RegisterAutostart() {
     wchar_t exePath[MAX_PATH];
@@ -20,7 +16,7 @@ void RegisterAutostart() {
     }
 }
 
-int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR /*pCmdLine*/, int /*nShowCmd*/) {
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, PWSTR /*pCmdLine*/, int nCmdShow) {
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicGainControl_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         return 0;
@@ -28,13 +24,7 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
 
     RegisterAutostart();
 
-    const HRESULT hr = MddBootstrapInitialize2(
-        WINDOWSAPPSDK_RELEASE_MAJORMINOR,
-        WINDOWSAPPSDK_RELEASE_VERSION_TAG_W,
-        PACKAGE_VERSION{ WINDOWSAPPSDK_RUNTIME_VERSION_UINT64 },
-        MddBootstrapInitializeOptions_OnNoMatch_ShowUI
-    );
-
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     if (FAILED(hr)) {
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
@@ -42,16 +32,17 @@ int WINAPI wWinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, PWSTR 
     }
 
     {
-        winrt::init_apartment(winrt::apartment_type::single_threaded);
-
-        winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
-            winrt::make<winrt::MicGainControl::implementation::App>();
-        });
-
-        winrt::uninit_apartment();
+        MainWindow mainWindow(hInstance);
+        if (mainWindow.Initialize(SW_HIDE)) {
+            MSG msg;
+            while (GetMessageW(&msg, nullptr, 0, 0)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
     }
 
-    MddBootstrapShutdown();
+    CoUninitialize();
 
     ReleaseMutex(hMutex);
     CloseHandle(hMutex);

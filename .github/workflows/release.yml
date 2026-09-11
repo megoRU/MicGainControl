@@ -23,20 +23,14 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Restore NuGet Packages
-        run: nuget restore packages.config -OutputDirectory packages
-
       - name: Build
         run: msbuild MicGainControl.sln /p:Configuration=Release /p:Platform=x64
 
-      # Приложение неупакованное (WindowsPackageType=None): рядом с exe обязан лежать
-      # Microsoft.WindowsAppRuntime.Bootstrap.dll, иначе оно не стартует.
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist | Out-Null
           Copy-Item x64/Release/MicGainControl.exe dist/
-          Copy-Item x64/Release/Microsoft.WindowsAppRuntime.Bootstrap.dll dist/
           Compress-Archive -Path dist/* -DestinationPath MicGainControl.zip -Force
 
       - name: Upload Artifact
