@@ -29,9 +29,9 @@ public:
     STDMETHODIMP OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA pNotify) override;
 
     // IMMNotificationClient
-    STDMETHODIMP OnDeviceStateChanged([[maybe_unused]] LPCWSTR pwstrDeviceId, [[maybe_unused]] DWORD dwNewState) override { return S_OK; }
-    STDMETHODIMP OnDeviceAdded([[maybe_unused]] LPCWSTR pwstrDeviceId) override { return S_OK; }
-    STDMETHODIMP OnDeviceRemoved([[maybe_unused]] LPCWSTR pwstrDeviceId) override { return S_OK; }
+    STDMETHODIMP OnDeviceStateChanged([[maybe_unused]] LPCWSTR pwstrDeviceId, DWORD dwNewState) override;
+    STDMETHODIMP OnDeviceAdded([[maybe_unused]] LPCWSTR pwstrDeviceId) override;
+    STDMETHODIMP OnDeviceRemoved(LPCWSTR pwstrDeviceId) override;
     STDMETHODIMP OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR pwstrDefaultDeviceId) override;
     STDMETHODIMP OnPropertyValueChanged([[maybe_unused]] LPCWSTR pwstrDeviceId, [[maybe_unused]] const PROPERTYKEY key) override { return S_OK; }
 
