@@ -9,6 +9,7 @@
 #include "AudioManager.hpp"
 #include "TrayManager.hpp"
 #include "resource.h"
+#include <cmath>
 #include <string>
 
 #ifndef TBS_TRANSPARENTBKGND
@@ -145,21 +146,29 @@ public:
     Application(HINSTANCE hInstance) : m_hInstance(hInstance), m_trayManager(hInstance) {}
 
     ~Application() {
+        m_configManager.StopWatching();
+        if (m_hWnd && IsWindow(m_hWnd)) {
+            DestroyWindow(m_hWnd);
+            m_hWnd = nullptr;
+        }
         DestroyWindowIcons();
         DestroyFonts();
         DestroyBrushes();
     }
 
     bool Initialize() {
-        if (!m_configManager.Load()) return false;
-        if (!m_audioManager.Initialize()) return false;
+        if (!m_configManager.Load()) {
+            // Keep the utility usable when a first-run settings file is
+            // unreadable or malformed; ConfigManager retains safe defaults.
+            OutputDebugStringW(L"MicGainControl: configuration could not be loaded; using defaults.\n");
+        }
+        if (!m_audioManager.Initialize()) {
+            m_initializationErrorCode = 21;
+            OutputDebugStringW(L"MicGainControl: audio initialization failed.\n");
+            return false;
+        }
 
         ApplyConfig(m_configManager.GetConfig(), false);
-
-        m_configManager.SetCallback([this](const Config& cfg) {
-            ApplyConfig(cfg, true);
-        });
-        m_configManager.StartWatching();
 
         m_trayManager.SetOnToggle([this]() {
             bool newState = !m_configManager.GetConfig().enabled;
@@ -177,19 +186,41 @@ public:
         });
 
         if (!CreateMainWindow()) {
+            m_initializationErrorCode = 22;
+            OutputDebugStringW(L"MicGainControl: window creation failed.\n");
             return false;
         }
 
-        return m_trayManager.CreateTrayIcon(m_hWnd);
+        m_trayAvailable = m_trayManager.CreateTrayIcon(m_hWnd);
+        if (!m_trayAvailable) {
+            // On Windows sessions without Explorer/the notification area, keep
+            // the utility usable by opening its main window instead of exiting.
+            OutputDebugStringW(L"MicGainControl: tray icon unavailable; showing the main window.\n");
+            ShowMainWindow();
+        }
+
+        m_configManager.SetCallback([this](const Config&) {
+            // The directory watcher runs on a worker thread. Keep all COM
+            // endpoint work and window updates on the owning UI thread.
+            if (m_hWnd) PostMessageW(m_hWnd, kApplyExternalConfigMessage, 0, 0);
+        });
+        m_configManager.StartWatching();
+        return true;
     }
 
-    void Run() {
+    void Run(bool showMainWindowOnStart = false) {
+        if (showMainWindowOnStart) {
+            ShowMainWindow();
+        }
+
         MSG msg;
         while (GetMessageW(&msg, NULL, 0, 0)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
+
+    int GetInitializationErrorCode() const { return m_initializationErrorCode; }
 
 private:
     int Scale(int value) const {
@@ -275,7 +306,7 @@ private:
         logFont.lfHeight = PointsToPixels(pointSize);
         logFont.lfWeight = weight;
         logFont.lfUnderline = underline ? TRUE : FALSE;
-        logFont.lfQuality = CLEARTYPE_QUALITY;
+        logFont.lfQuality = CLEARTYPE_NATURAL_QUALITY;
         wcscpy_s(logFont.lfFaceName, L"Segoe UI");
         return CreateFontIndirectW(&logFont);
     }
@@ -450,18 +481,26 @@ private:
             return;
         }
 
-        HDC memoryDeviceContext = CreateCompatibleDC(deviceContext);
-        HBITMAP memoryBitmap = CreateCompatibleBitmap(deviceContext, width, height);
-        HGDIOBJ previousBitmap = SelectObject(memoryDeviceContext, memoryBitmap);
+        // Paint the complete control off-screen, then copy it in one operation.
+        // The track and thumb both change while dragging, so direct painting
+        // exposes the background between their individual draw calls.
+        HDC bufferDc = CreateCompatibleDC(deviceContext);
+        HBITMAP bufferBitmap = bufferDc ? CreateCompatibleBitmap(deviceContext, width, height) : nullptr;
+        HGDIOBJ previousBitmap = bufferBitmap ? SelectObject(bufferDc, bufferBitmap) : nullptr;
+        HDC paintDc = previousBitmap ? bufferDc : deviceContext;
 
-        FillRect(memoryDeviceContext, &clientRectangle, m_hBackgroundBrush);
-        DrawTrackbarChannel(memoryDeviceContext);
-        DrawTrackbarThumb(memoryDeviceContext);
-        BitBlt(deviceContext, 0, 0, width, height, memoryDeviceContext, 0, 0, SRCCOPY);
+        FillRect(paintDc, &clientRectangle, m_hBackgroundBrush);
+        DrawTrackbarChannel(paintDc);
+        DrawTrackbarThumb(paintDc);
 
-        SelectObject(memoryDeviceContext, previousBitmap);
-        DeleteObject(memoryBitmap);
-        DeleteDC(memoryDeviceContext);
+        if (previousBitmap) {
+            BitBlt(deviceContext, 0, 0, width, height, bufferDc, 0, 0, SRCCOPY);
+            SelectObject(bufferDc, previousBitmap);
+            DeleteObject(bufferBitmap);
+            DeleteDC(bufferDc);
+        } else if (bufferDc) {
+            DeleteDC(bufferDc);
+        }
     }
 
     void SetTrackbarPositionFromPoint(LPARAM lParam, bool applyImmediately) {
@@ -490,8 +529,7 @@ private:
         if (applyImmediately) {
             HandleTrackbarChanged();
         } else {
-            UpdateVolumeLabel(volumePercent);
-            InvalidateRect(m_hTrackbar, nullptr, FALSE);
+            HandleTrackbarChanged(false);
         }
     }
 
@@ -557,9 +595,10 @@ private:
 
     void ConfigureHighQualityGraphics(Gdiplus::Graphics& graphics) const {
         graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+        graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
         graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
         graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
     }
 
     void DrawMicrophoneIcon(Gdiplus::Graphics& graphics, float x, float y, float size, COLORREF color) const {
@@ -694,6 +733,7 @@ private:
         COLORREF knobColor = enabled ? RGB(255, 255, 255) : m_themeColors.secondaryTextColor;
         Gdiplus::SolidBrush knobBrush(ToGdiplusColor(knobColor));
         graphics.FillEllipse(&knobBrush, knobRectangle);
+
     }
 
     void PaintMainWindow(HDC hdc) const {
@@ -740,7 +780,9 @@ private:
         wc.hIcon = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXICON, m_dpi), GetSystemMetricForDpi(SM_CYICON, m_dpi), true);
         wc.hIconSm = LoadApplicationIcon(GetSystemMetricForDpi(SM_CXSMICON, m_dpi), GetSystemMetricForDpi(SM_CYSMICON, m_dpi), true);
         wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
-        wc.hbrBackground = m_hBackgroundBrush;
+        // The window and controls paint their own themed backgrounds. Avoid
+        // retaining a class brush that is replaced during theme changes.
+        wc.hbrBackground = nullptr;
         wc.lpszClassName = L"MicGainControlMainWindow";
 
         if (!RegisterClassExW(&wc)) {
@@ -793,11 +835,11 @@ private:
         m_hDescriptionLabel = CreateWindowExW(0, L"STATIC", L"Изменения применяются сразу", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kDescriptionLabelId), m_hInstance, NULL);
         m_hVolumeCaptionLabel = CreateWindowExW(0, L"STATIC", L"Громкость микрофона", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeCaptionLabelId), m_hInstance, NULL);
         m_hVolumeValueLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVolumeValueLabelId), m_hInstance, NULL);
-        m_hSwitchLabel = CreateWindowExW(0, L"STATIC", L"Микрофон", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kSwitchLabelId), m_hInstance, NULL);
-        m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
+        m_hSwitchLabel = CreateWindowExW(0, L"STATIC", L"Контроль громкости", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kSwitchLabelId), m_hInstance, NULL);
+        m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"Включить или выключить удержание заданной громкости", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
         m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
-        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.6", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.7", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
@@ -839,6 +881,9 @@ private:
         }
 
         bool enabled = m_configManager.GetConfig().enabled;
+        SetWindowTextW(m_hDescriptionLabel, enabled
+            ? L"Удерживаем выбранную громкость микрофона"
+            : L"Выбранный уровень сохранён; удержание выключено");
         SendMessageW(m_hEnabledToggle, BM_SETCHECK, enabled ? BST_CHECKED : BST_UNCHECKED, 0);
         EnableWindow(m_hTrackbar, enabled ? TRUE : FALSE);
         InvalidateRect(m_hEnabledToggle, nullptr, FALSE);
@@ -860,15 +905,16 @@ private:
         SetWindowTextW(m_hVolumeValueLabel, labelText.c_str());
     }
 
-    void HandleTrackbarChanged() {
+    void HandleTrackbarChanged(bool persist = true) {
         if (!m_hTrackbar) {
             return;
         }
 
         int volumePercent = ClampPercent(static_cast<int>(SendMessageW(m_hTrackbar, TBM_GETPOS, 0, 0)));
         float volume = static_cast<float>(volumePercent) / 100.0f;
-        m_configManager.SetMicrophoneVolume(volume);
-        m_audioManager.ApplyVolumeImmediately(volume);
+        const bool valueChanged = std::abs(m_configManager.GetConfig().microphoneVolume - volume) >= 0.0001f;
+        m_configManager.SetMicrophoneVolume(volume, persist);
+        if (valueChanged) m_audioManager.ApplyVolumeImmediately(volume);
         UpdateVolumeLabel(volumePercent);
         InvalidateRect(m_hTrackbar, nullptr, FALSE);
     }
@@ -950,6 +996,19 @@ private:
                 ReleaseCapture();
             }
             return 0;
+        case WM_CAPTURECHANGED:
+            if (app->m_trackbarDragging) {
+                app->m_trackbarDragging = false;
+                app->HandleTrackbarChanged();
+            }
+            break;
+        case WM_CANCELMODE:
+            if (app->m_trackbarDragging) {
+                app->m_trackbarDragging = false;
+                ReleaseCapture();
+                app->HandleTrackbarChanged();
+            }
+            return 0;
         case WM_KEYDOWN:
         case WM_MOUSEWHEEL:
             {
@@ -1000,7 +1059,8 @@ private:
                 }
                 break;
             case WM_COMMAND:
-                if (LOWORD(wParam) == kEnabledToggleId && HIWORD(wParam) == BN_CLICKED) {
+                if ((LOWORD(wParam) == kEnabledToggleId && HIWORD(wParam) == BN_CLICKED) ||
+                    (LOWORD(wParam) == kSwitchLabelId && HIWORD(wParam) == STN_CLICKED)) {
                     app->HandleEnabledToggleClicked();
                     return 0;
                 }
@@ -1058,10 +1118,12 @@ private:
             case WM_ERASEBKGND:
                 return 1;
             case kApplyExternalConfigMessage:
+                app->ApplyConfig(app->m_configManager.GetConfig(), false);
                 app->UpdateTrackbarFromConfig();
                 return 0;
             case WM_CLOSE:
-                if (app->m_allowExit) {
+                if (app->m_allowExit || !app->m_trayAvailable) {
+                    app->m_allowExit = true;
                     DestroyWindow(hWnd);
                 } else {
                     ShowWindow(hWnd, SW_HIDE);
@@ -1074,6 +1136,7 @@ private:
                 }
                 app->RestoreTrackbarSubclass();
                 app->DestroyWindowIcons();
+                app->m_hWnd = nullptr;
                 if (app->m_allowExit) {
                     PostQuitMessage(0);
                 }
@@ -1107,21 +1170,47 @@ private:
     HICON m_hBigIcon = NULL;
     bool m_darkModeEnabled = false;
     bool m_trackbarDragging = false;
+    bool m_trayAvailable = false;
     bool m_allowExit = false;
+    int m_initializationErrorCode = 20;
     ConfigManager m_configManager;
     AudioManager m_audioManager;
     TrayManager m_trayManager;
 };
 
 void RegisterAutostart() {
-    wchar_t exePath[MAX_PATH];
-    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    std::wstring exePath(32768, L'\0');
+    const DWORD pathLength = GetModuleFileNameW(nullptr, exePath.data(), static_cast<DWORD>(exePath.size()));
+    if (pathLength == 0 || pathLength >= exePath.size()) return;
+    exePath.resize(pathLength);
 
-    std::wstring quotedPath = L"\"" + std::wstring(exePath) + L"\"";
+    const std::wstring quotedPath = L"\"" + exePath + L"\"";
 
-    HKEY hKey;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, L"MicGainControl", 0, REG_SZ, reinterpret_cast<const BYTE*>(quotedPath.c_str()), static_cast<DWORD>((quotedPath.length() + 1) * sizeof(wchar_t)));
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0,
+        KEY_QUERY_VALUE | KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
+        wchar_t currentValue[32768] = {};
+        DWORD type = 0;
+        DWORD byteCount = static_cast<DWORD>(sizeof(currentValue));
+        const LSTATUS readStatus = RegQueryValueExW(hKey, L"MicGainControl", nullptr, &type,
+            reinterpret_cast<BYTE*>(currentValue), &byteCount);
+        currentValue[(sizeof(currentValue) / sizeof(currentValue[0])) - 1] = L'\0';
+        const std::wstring existingValue(currentValue);
+        const bool valueMissing = readStatus == ERROR_FILE_NOT_FOUND;
+        const bool plainExistingPath = readStatus == ERROR_SUCCESS && type == REG_SZ &&
+            existingValue.size() >= 2 && existingValue.front() == L'"' &&
+            existingValue.find(L'"', 1) == existingValue.size() - 1;
+        std::wstring previousExecutable;
+        if (plainExistingPath) previousExecutable = existingValue.substr(1, existingValue.size() - 2);
+        const std::size_t lastSeparator = previousExecutable.find_last_of(L"\\/");
+        const std::wstring previousFileName = previousExecutable.substr(
+            lastSeparator == std::wstring::npos ? 0 : lastSeparator + 1);
+        const bool existingEntryBelongsToApplication = _wcsicmp(previousFileName.c_str(), L"MicGainControl.exe") == 0;
+        if (valueMissing || (plainExistingPath && existingEntryBelongsToApplication && quotedPath != existingValue)) {
+            RegSetValueExW(hKey, L"MicGainControl", 0, REG_SZ,
+                reinterpret_cast<const BYTE*>(quotedPath.c_str()),
+                static_cast<DWORD>((quotedPath.length() + 1) * sizeof(wchar_t)));
+        }
         RegCloseKey(hKey);
     }
 }
@@ -1131,20 +1220,31 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
 
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"MicGainControl_SingleInstance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        HWND existingWindow = FindWindowW(L"MicGainControlMainWindow", nullptr);
+        if (existingWindow) {
+            ShowWindow(existingWindow, SW_RESTORE);
+            SetForegroundWindow(existingWindow);
+        }
         return 0;
     }
 
-    if (FAILED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))) {
-        return 0;
+    const std::wstring commandLine = GetCommandLineW();
+    const bool developmentLaunch = commandLine.find(L"--dev") != std::wstring::npos;
+
+    const HRESULT comResult = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(comResult)) {
+        OutputDebugStringW(L"MicGainControl: COM initialization failed.\n");
+        return 10;
     }
 
     Gdiplus::GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken = 0;
     if (Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr) != Gdiplus::Ok) {
+        OutputDebugStringW(L"MicGainControl: GDI+ initialization failed.\n");
         CoUninitialize();
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
-        return 0;
+        return 11;
     }
 
     RegisterAutostart();
@@ -1152,7 +1252,14 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
     {
         Application app(hInstance);
         if (app.Initialize()) {
-            app.Run();
+            app.Run(developmentLaunch);
+        } else {
+            const int errorCode = app.GetInitializationErrorCode();
+            Gdiplus::GdiplusShutdown(gdiplusToken);
+            CoUninitialize();
+            ReleaseMutex(hMutex);
+            CloseHandle(hMutex);
+            return errorCode;
         }
     }
 

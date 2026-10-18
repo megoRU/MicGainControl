@@ -1,4 +1,4 @@
-#include "resource.h"
+#include "../include/resource.h"
 #include <windows.h>
 
 IDI_APP_ICON ICON "app.ico"

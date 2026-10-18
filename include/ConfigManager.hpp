@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <windows.h>
 
@@ -18,10 +19,10 @@ public:
 
     bool Load();
     void Save();
-    const Config& GetConfig() const;
+    Config GetConfig() const;
     const std::wstring& GetConfigPath() const { return m_configPath; }
     void SetEnabled(bool enabled);
-    void SetMicrophoneVolume(float volume);
+    void SetMicrophoneVolume(float volume, bool save = true);
 
     using ConfigChangedCallback = std::function<void(const Config&)>;
     void SetCallback(ConfigChangedCallback callback);
@@ -32,8 +33,12 @@ public:
 private:
     void WatchThread();
     void OnFileChanged();
+    void SaveConfig(const Config& config);
 
     Config m_config;
+    bool m_volumeDirty = false;
+    mutable std::mutex m_configMutex;
+    std::mutex m_saveMutex;
     std::wstring m_configPath;
     ConfigChangedCallback m_callback;
 
