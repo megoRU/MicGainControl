@@ -839,7 +839,7 @@ private:
         m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"Включить или выключить удержание заданной громкости", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
         m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
-        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.7", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.8", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
@@ -905,7 +905,7 @@ private:
         SetWindowTextW(m_hVolumeValueLabel, labelText.c_str());
     }
 
-    void HandleTrackbarChanged(bool persist = true) {
+    void HandleTrackbarChanged(bool commit = true) {
         if (!m_hTrackbar) {
             return;
         }
@@ -913,10 +913,24 @@ private:
         int volumePercent = ClampPercent(static_cast<int>(SendMessageW(m_hTrackbar, TBM_GETPOS, 0, 0)));
         float volume = static_cast<float>(volumePercent) / 100.0f;
         const bool valueChanged = std::abs(m_configManager.GetConfig().microphoneVolume - volume) >= 0.0001f;
-        m_configManager.SetMicrophoneVolume(volume, persist);
-        if (valueChanged) m_audioManager.ApplyVolumeImmediately(volume);
+        m_configManager.SetMicrophoneVolume(volume, commit);
+        if (commit) {
+            if (valueChanged || m_trackbarPreviewPending) {
+                m_audioManager.ApplyVolumeImmediately(volume);
+            }
+            m_trackbarPreviewPending = false;
+        } else if (valueChanged) {
+            m_trackbarPreviewPending = true;
+        }
         UpdateVolumeLabel(volumePercent);
         InvalidateRect(m_hTrackbar, nullptr, FALSE);
+    }
+
+    void CancelTrackbarDrag() {
+        m_trackbarDragging = false;
+        m_trackbarPreviewPending = false;
+        m_configManager.SetMicrophoneVolume(m_trackbarDragStartVolume, false);
+        UpdateTrackbarFromConfig();
     }
 
     void ShowMainWindow() {
@@ -986,6 +1000,8 @@ private:
             if (!IsWindowEnabled(hWnd)) return 0;
             SetFocus(hWnd);
             SetCapture(hWnd);
+            app->m_trackbarDragStartVolume = app->m_configManager.GetConfig().microphoneVolume;
+            app->m_trackbarPreviewPending = false;
             app->m_trackbarDragging = true;
             app->SetTrackbarPositionFromPoint(lParam, false);
             return 0;
@@ -998,15 +1014,13 @@ private:
             return 0;
         case WM_CAPTURECHANGED:
             if (app->m_trackbarDragging) {
-                app->m_trackbarDragging = false;
-                app->HandleTrackbarChanged();
+                app->CancelTrackbarDrag();
             }
             break;
         case WM_CANCELMODE:
             if (app->m_trackbarDragging) {
-                app->m_trackbarDragging = false;
+                app->CancelTrackbarDrag();
                 ReleaseCapture();
-                app->HandleTrackbarChanged();
             }
             return 0;
         case WM_KEYDOWN:
@@ -1042,7 +1056,7 @@ private:
             case WM_TRAY_ICON:
                 if (LOWORD(lParam) == WM_RBUTTONUP) {
                     app->m_trayManager.ShowContextMenu(hWnd);
-                } else if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
+                } else if (LOWORD(lParam) == WM_LBUTTONUP) {
                     app->ShowMainWindow();
                 }
                 return 0;
@@ -1054,7 +1068,7 @@ private:
                 return 0;
             case WM_HSCROLL:
                 if (reinterpret_cast<HWND>(lParam) == app->m_hTrackbar) {
-                    app->HandleTrackbarChanged();
+                    app->HandleTrackbarChanged(!app->m_trackbarDragging);
                     return 0;
                 }
                 break;
@@ -1170,6 +1184,8 @@ private:
     HICON m_hBigIcon = NULL;
     bool m_darkModeEnabled = false;
     bool m_trackbarDragging = false;
+    bool m_trackbarPreviewPending = false;
+    float m_trackbarDragStartVolume = 1.0f;
     bool m_trayAvailable = false;
     bool m_allowExit = false;
     int m_initializationErrorCode = 20;
