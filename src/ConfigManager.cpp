@@ -96,8 +96,86 @@ bool ConfigManager::Load() {
     }
 }
 
-void ConfigManager::SaveConfig(const Config& config) {
-    std::lock_guard<std::mutex> saveLock(m_saveMutex);
+void ConfigManager::SaveThread() {
+    for (;;) {
+        Config config;
+        {
+            std::unique_lock<std::mutex> lock(m_saveMutex);
+            m_saveCondition.wait(lock, [this]() {
+                return m_stopSaveThread || m_savePending;
+            });
+            if (!m_savePending) {
+                if (m_stopSaveThread) break;
+                continue;
+            }
+            config = m_pendingSave;
+            m_savePending = false;
+        }
+        WriteConfigFile(config);
+    }
+}
+
+void ConfigManager::StartSaveThread() {
+    std::lock_guard<std::mutex> lock(m_saveMutex);
+    if (m_saveWorkerRunning) return;
+
+    m_stopSaveThread = false;
+    m_saveWorkerRunning = true;
+    try {
+        m_saveThread = std::thread(&ConfigManager::SaveThread, this);
+    } catch (...) {
+        m_saveWorkerRunning = false;
+        OutputDebugStringW(L"MicGainControl: unable to start the configuration save thread.\n");
+    }
+}
+
+void ConfigManager::StopSaveThread() {
+    {
+        std::lock_guard<std::mutex> lock(m_saveMutex);
+        m_stopSaveThread = true;
+    }
+    m_saveCondition.notify_all();
+
+    if (m_saveThread.joinable()) {
+        m_saveThread.join();
+    }
+
+    Config pending;
+    bool hasPending = false;
+    {
+        std::lock_guard<std::mutex> lock(m_saveMutex);
+        m_saveWorkerRunning = false;
+        // A caller could have queued a save while the worker was finishing.
+        if (m_savePending) {
+            pending = m_pendingSave;
+            m_savePending = false;
+            hasPending = true;
+        }
+        m_stopSaveThread = false;
+    }
+    if (hasPending) {
+        WriteConfigFile(pending);
+    }
+}
+
+void ConfigManager::QueueSave(const Config& config) {
+    {
+        std::lock_guard<std::mutex> lock(m_saveMutex);
+        if (m_saveWorkerRunning) {
+            m_pendingSave = config;
+            m_savePending = true;
+            m_saveCondition.notify_one();
+            return;
+        }
+    }
+
+    // Configuration is also written before StartWatching() creates the worker
+    // (for example, when creating the first-run settings file).
+    WriteConfigFile(config);
+}
+
+void ConfigManager::WriteConfigFile(const Config& config) {
+    std::lock_guard<std::mutex> writeLock(m_writeMutex);
     try {
         const int volumePercent = static_cast<int>(std::lround(std::clamp(config.microphoneVolume, 0.0f, 1.0f) * 100.0f));
         const fs::path path(m_configPath);
@@ -124,7 +202,7 @@ void ConfigManager::SaveConfig(const Config& config) {
 }
 
 void ConfigManager::Save() {
-    SaveConfig(GetConfig());
+    QueueSave(GetConfig());
 }
 
 Config ConfigManager::GetConfig() const {
@@ -141,7 +219,7 @@ void ConfigManager::SetEnabled(bool enabled) {
         m_volumeDirty = false; // This write includes any in-progress preview value.
         config = m_config;
     }
-    SaveConfig(config);
+    QueueSave(config);
 }
 
 void ConfigManager::SetMicrophoneVolume(float volume, bool save) {
@@ -161,7 +239,7 @@ void ConfigManager::SetMicrophoneVolume(float volume, bool save) {
             shouldSave = true;
         }
     }
-    if (shouldSave) SaveConfig(config);
+    if (shouldSave) QueueSave(config);
 }
 
 void ConfigManager::SetCallback(ConfigChangedCallback callback) {
@@ -170,6 +248,8 @@ void ConfigManager::SetCallback(ConfigChangedCallback callback) {
 }
 
 void ConfigManager::StartWatching() {
+    StartSaveThread();
+
     if (!m_stopEvent) {
         OutputDebugStringW(L"MicGainControl: unable to create the configuration watcher stop event.\n");
         return;
@@ -184,6 +264,7 @@ void ConfigManager::StopWatching() {
     m_running = false;
     if (m_stopEvent) SetEvent(m_stopEvent);
     if (m_watchThread.joinable()) m_watchThread.join();
+    StopSaveThread();
 }
 
 void ConfigManager::WatchThread() {
