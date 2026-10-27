@@ -147,6 +147,9 @@ public:
 
     ~Application() {
         m_configManager.StopWatching();
+        // Unregister audio callbacks while the window is still alive and the
+        // audio objects are still valid.
+        m_audioManager.Shutdown();
         if (m_hWnd && IsWindow(m_hWnd)) {
             DestroyWindow(m_hWnd);
             m_hWnd = nullptr;
@@ -162,13 +165,16 @@ public:
             // unreadable or malformed; ConfigManager retains safe defaults.
             OutputDebugStringW(L"MicGainControl: configuration could not be loaded; using defaults.\n");
         }
+
+        // Apply the saved level before the audio device is opened so startup
+        // does not briefly force the microphone to 100%.
+        ApplyConfig(m_configManager.GetConfig(), false);
+
         if (!m_audioManager.Initialize()) {
             m_initializationErrorCode = 21;
             OutputDebugStringW(L"MicGainControl: audio initialization failed.\n");
             return false;
         }
-
-        ApplyConfig(m_configManager.GetConfig(), false);
 
         m_trayManager.SetOnToggle([this]() {
             bool newState = !m_configManager.GetConfig().enabled;
@@ -190,6 +196,8 @@ public:
             OutputDebugStringW(L"MicGainControl: window creation failed.\n");
             return false;
         }
+
+        m_audioManager.SetNotificationWindow(m_hWnd);
 
         m_trayAvailable = m_trayManager.CreateTrayIcon(m_hWnd);
         if (!m_trayAvailable) {
@@ -839,7 +847,7 @@ private:
         m_hEnabledToggle = CreateWindowExW(0, L"BUTTON", L"Включить или выключить удержание заданной громкости", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW | BS_CHECKBOX, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kEnabledToggleId), m_hInstance, NULL);
         m_hTrackbar = CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_NOTICKS | TBS_TRANSPARENTBKGND | TBS_FIXEDLENGTH, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kTrackbarId), m_hInstance, NULL);
         m_hGithubLink = CreateWindowExW(0, L"STATIC", L"GitHub", WS_CHILD | WS_VISIBLE | SS_NOTIFY, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kGithubLinkId), m_hInstance, NULL);
-        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.8", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
+        m_hVersionLabel = CreateWindowExW(0, L"STATIC", L"Версия 0.1.9", WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 0, 0, hWnd, ControlIdToMenuHandle(kVersionLabelId), m_hInstance, NULL);
 
         if (m_hTrackbar) {
             SendMessageW(m_hTrackbar, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
@@ -1135,6 +1143,12 @@ private:
                 app->ApplyConfig(app->m_configManager.GetConfig(), false);
                 app->UpdateTrackbarFromConfig();
                 return 0;
+            case AudioManager::kVolumeChangedMessage:
+                app->m_audioManager.HandleVolumeChangeNotification();
+                return 0;
+            case AudioManager::kDeviceChangedMessage:
+                app->m_audioManager.HandleDeviceChangeNotification();
+                return 0;
             case WM_CLOSE:
                 if (app->m_allowExit || !app->m_trayAvailable) {
                     app->m_allowExit = true;
@@ -1265,17 +1279,13 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
 
     RegisterAutostart();
 
+    int exitCode = 0;
     {
         Application app(hInstance);
-        if (app.Initialize()) {
-            app.Run(developmentLaunch);
+        if (!app.Initialize()) {
+            exitCode = app.GetInitializationErrorCode();
         } else {
-            const int errorCode = app.GetInitializationErrorCode();
-            Gdiplus::GdiplusShutdown(gdiplusToken);
-            CoUninitialize();
-            ReleaseMutex(hMutex);
-            CloseHandle(hMutex);
-            return errorCode;
+            app.Run(developmentLaunch);
         }
     }
 
@@ -1284,5 +1294,5 @@ int WINAPI WinMain(HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance
     ReleaseMutex(hMutex);
     CloseHandle(hMutex);
 
-    return 0;
+    return exitCode;
 }

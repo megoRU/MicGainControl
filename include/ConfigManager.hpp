@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 #include <windows.h>
@@ -33,14 +34,26 @@ public:
 private:
     void WatchThread();
     void OnFileChanged();
-    void SaveConfig(const Config& config);
+    void SaveThread();
+    void StartSaveThread();
+    void StopSaveThread();
+    void QueueSave(const Config& config);
+    void WriteConfigFile(const Config& config);
 
     Config m_config;
     bool m_volumeDirty = false;
     mutable std::mutex m_configMutex;
-    std::mutex m_saveMutex;
     std::wstring m_configPath;
     ConfigChangedCallback m_callback;
+
+    std::mutex m_saveMutex;
+    std::mutex m_writeMutex;
+    std::condition_variable m_saveCondition;
+    Config m_pendingSave;
+    bool m_savePending = false;
+    bool m_stopSaveThread = false;
+    bool m_saveWorkerRunning = false;
+    std::thread m_saveThread;
 
     std::atomic<bool> m_running{false};
     std::thread m_watchThread;

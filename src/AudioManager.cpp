@@ -20,12 +20,24 @@ const GUID AudioManager::m_contextGuid = { 0xa316e243, 0x764d, 0x4700, { 0x94, 0
 AudioManager::AudioManager() {}
 
 AudioManager::~AudioManager() {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    Shutdown();
+}
+
+void AudioManager::Shutdown() {
+    // Stop delivering notifications before the window and the audio objects go
+    // away. Callbacks themselves never touch these objects.
+    m_notificationWindow.store(nullptr, std::memory_order_release);
+
     if (m_enumerator) {
         LogAudioFailure(L"UnregisterEndpointNotificationCallback",
             m_enumerator->UnregisterEndpointNotificationCallback(this));
+        m_enumerator.Reset();
     }
     CleanupDevice();
+}
+
+void AudioManager::SetNotificationWindow(HWND window) {
+    m_notificationWindow.store(window, std::memory_order_release);
 }
 
 bool AudioManager::Initialize() {
@@ -49,7 +61,8 @@ bool AudioManager::Initialize() {
 }
 
 bool AudioManager::SetupDefaultDevice() {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    // This function must only be called on the UI thread. IMMNotificationClient
+    // callbacks delegate here through kDeviceChangedMessage.
     CleanupDevice();
 
     if (!m_enumerator) return false;
@@ -92,14 +105,12 @@ void AudioManager::CleanupDevice() {
 }
 
 void AudioManager::SetTargetVolume(float volume) {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!std::isfinite(volume)) return;
     m_targetVolume = std::clamp(volume, 0.0f, 1.0f);
     EnforceVolume();
 }
 
 void AudioManager::SetEnabled(bool enabled) {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_enabled = enabled;
     if (m_enabled) {
         EnforceVolume();
@@ -107,17 +118,9 @@ void AudioManager::SetEnabled(bool enabled) {
 }
 
 void AudioManager::ApplyVolumeImmediately(float volume) {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!std::isfinite(volume)) return;
 
-    if (volume < 0.0f) {
-        volume = 0.0f;
-    }
-    if (volume > 1.0f) {
-        volume = 1.0f;
-    }
-
-    m_targetVolume = volume;
+    m_targetVolume = std::clamp(volume, 0.0f, 1.0f);
 
     if (!m_volumeControl) {
         return;
@@ -135,7 +138,6 @@ void AudioManager::ApplyVolumeImmediately(float volume) {
 }
 
 void AudioManager::EnforceVolume() {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!m_enabled || !m_volumeControl) return;
 
     float currentVolume = 0.0f;
@@ -156,6 +158,28 @@ void AudioManager::EnforceVolume() {
     LogAudioFailure(L"GetMute", hr);
     if (mute) {
         LogAudioFailure(L"SetMute", m_volumeControl->SetMute(FALSE, &m_contextGuid));
+    }
+}
+
+void AudioManager::HandleVolumeChangeNotification() {
+    m_volumeChangePending.store(false, std::memory_order_release);
+    EnforceVolume();
+}
+
+void AudioManager::HandleDeviceChangeNotification() {
+    m_deviceChangePending.store(false, std::memory_order_release);
+    SetupDefaultDevice();
+}
+
+void AudioManager::PostNotification(UINT message, std::atomic<bool>& pending) {
+    // Coalesce bursts of notifications and never wait for the UI thread.
+    if (pending.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    const HWND window = m_notificationWindow.load(std::memory_order_acquire);
+    if (!window || !PostMessageW(window, message, 0, 0)) {
+        pending.store(false, std::memory_order_release);
     }
 }
 
@@ -183,51 +207,39 @@ STDMETHODIMP_(ULONG) AudioManager::Release() {
 }
 
 STDMETHODIMP AudioManager::OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA pNotify) {
-    if (pNotify && pNotify->guidEventContext != m_contextGuid) {
-        EnforceVolume();
+    if (!pNotify) {
+        return E_INVALIDARG;
+    }
+
+    // The audio service invokes this callback while holding its own state.
+    // Calling SetMasterVolumeLevelScalar/SetMute from here can deadlock, and
+    // waiting on a mutex is forbidden, so defer enforcement to the UI thread.
+    if (pNotify->guidEventContext != m_contextGuid) {
+        PostNotification(kVolumeChangedMessage, m_volumeChangePending);
     }
     return S_OK;
 }
 
 STDMETHODIMP AudioManager::OnDefaultDeviceChanged(EDataFlow flow, ERole role, [[maybe_unused]] LPCWSTR pwstrDefaultDeviceId) {
     if (flow == eCapture && (role == eConsole || role == eMultimedia)) {
-        SetupDefaultDevice();
+        PostNotification(kDeviceChangedMessage, m_deviceChangePending);
     }
     return S_OK;
 }
 
-STDMETHODIMP AudioManager::OnDeviceStateChanged(LPCWSTR pwstrDeviceId, DWORD dwNewState) {
-    bool selectedDeviceChanged = (dwNewState & DEVICE_STATE_ACTIVE) != 0;
-    if (!selectedDeviceChanged && pwstrDeviceId) {
-        std::lock_guard<std::recursive_mutex> lock(m_mutex);
-        if (m_device) {
-            LPWSTR currentId = nullptr;
-            const HRESULT hr = m_device->GetId(&currentId);
-            if (SUCCEEDED(hr) && currentId) {
-                selectedDeviceChanged = _wcsicmp(currentId, pwstrDeviceId) == 0;
-            }
-            if (currentId) CoTaskMemFree(currentId);
-        }
-    }
-    if (selectedDeviceChanged) SetupDefaultDevice();
+STDMETHODIMP AudioManager::OnDeviceStateChanged([[maybe_unused]] LPCWSTR pwstrDeviceId, [[maybe_unused]] DWORD dwNewState) {
+    // Do not call IMMDevice/IMMDeviceEnumerator methods or wait on locks in a
+    // device callback: Windows documents both as deadlock-prone.
+    PostNotification(kDeviceChangedMessage, m_deviceChangePending);
     return S_OK;
 }
 
 STDMETHODIMP AudioManager::OnDeviceAdded([[maybe_unused]] LPCWSTR pwstrDeviceId) {
-    SetupDefaultDevice();
+    PostNotification(kDeviceChangedMessage, m_deviceChangePending);
     return S_OK;
 }
 
-STDMETHODIMP AudioManager::OnDeviceRemoved(LPCWSTR pwstrDeviceId) {
-    std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (!m_device || !pwstrDeviceId) return S_OK;
-    LPWSTR currentId = nullptr;
-    const HRESULT hr = m_device->GetId(&currentId);
-    if (SUCCEEDED(hr) && currentId && _wcsicmp(currentId, pwstrDeviceId) == 0) {
-        CoTaskMemFree(currentId);
-        SetupDefaultDevice();
-    } else if (currentId) {
-        CoTaskMemFree(currentId);
-    }
+STDMETHODIMP AudioManager::OnDeviceRemoved([[maybe_unused]] LPCWSTR pwstrDeviceId) {
+    PostNotification(kDeviceChangedMessage, m_deviceChangePending);
     return S_OK;
 }
